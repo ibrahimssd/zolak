@@ -24,6 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Cache-bust CSS/JS (a new page must never pair with a stale stylesheet)
+        run: |
+          v="${GITHUB_SHA::7}"
+          sed -i -E "s#href=\"style\.css\"#href=\"style.css?v=${v}\"#; s#src=\"app\.js\"#src=\"app.js?v=${v}\"#" web/index.html
+          grep -oE '(style\.css|app\.js)\?v=[0-9a-f]+' web/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
