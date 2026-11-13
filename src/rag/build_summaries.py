@@ -73,6 +73,11 @@ def tidy(text: str) -> str:
     return text.strip()
 
 
+def member_links(records: list[dict], members: list[int], n: int = 3) -> list[str]:
+    """Links the members shared (newest first, deduplicated)."""
+    return list(dict.fromkeys(u for i in members for u in records[i].get("links", [])))[:n]
+
+
 def cluster(records: list[dict], sim: float, device: str) -> list[list[int]]:
     from sentence_transformers import SentenceTransformer
     from sklearn.cluster import AgglomerativeClustering
@@ -137,7 +142,7 @@ def main() -> None:
         summaries.append({"id": f"sum-{n}", "source": "summary", "date": dates[-1], "date_from": dates[0],
                           "n_discussions": len(c), "members": [records[i]["id"] for i in c], "topic": s["topic"],
                           "question": q, "answer": a, "facts": s["facts"], "german_terms": s["german_terms"],
-                          "links": [], "confidence": "high" if len(c) >= 3 else "medium", "time_sensitive": True})
+                          "links": member_links(records, c), "confidence": "high" if len(c) >= 3 else "medium", "time_sensitive": True})
     with open(args.out, "w", encoding="utf-8") as f:
         for r in summaries:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")

@@ -20,13 +20,21 @@ def _cut(text: str, n: int) -> str:
     return text if len(text) <= n else text[:n].rsplit(" ", 1)[0] + " …"
 
 
-def format_context(records: list[dict], max_facts: int = 4, max_q: int = 160, max_a: int = 420) -> str:
-    """Compact, dated context block (keeps CPU prompt processing cheap)."""
+def _when(r: dict) -> str:
+    if r.get("source") == "summary":
+        a, b, n = r["date_from"][:7], r["date"][:7], r["n_discussions"]
+        span = b if a == b else f"{a} → {b}"
+        return f"{span}، ملخص {'نقاشين' if n == 2 else f'{n} نقاشات'}"
+    return r["date"][:7]
+
+
+def format_context(records: list[dict], max_facts: int = 6, max_q: int = 200, max_a: int = 1000) -> str:
+    """Dated context block. Entries are shown (almost) whole: the model may only say what it can see here."""
     if not records:
         return NO_CONTEXT_NOTE
     parts = []
     for i, r in enumerate(records, 1):
-        lines = [f"[{i}] ({r['date'][:7]}) س: {_cut(r['question'], max_q)}", f"ج: {_cut(r['answer'], max_a)}"]
+        lines = [f"[{i}] ({_when(r)}) س: {_cut(r['question'], max_q)}", f"ج: {_cut(r['answer'], max_a)}"]
         facts = r.get("facts", [])[:max_facts]
         if facts:
             lines.append("حقائق: " + " | ".join(facts))

@@ -70,6 +70,8 @@ class HybridRetriever:
         qpath = d / "kb_q.faiss"
         self.qindex = faiss.read_index(str(qpath)) if qpath.exists() else None
         self.bm25 = BM25Okapi([tokenize(doc_text(r)) for r in self.records])
+        # group record id -> summary of its question cluster (a summary consolidates several discussions)
+        self.summary_of = {m: r for r in self.records if r.get("source") == "summary" for m in r.get("members", [])}
         if embed_model is None:
             from sentence_transformers import SentenceTransformer
             embed_model = SentenceTransformer(self.cfg["embed_model"], device=device)
@@ -108,3 +110,22 @@ class HybridRetriever:
             sim.update({i: float(v @ qv[0]) for i, v in zip(missing, vecs)})
         return [Hit(self.records[i], fused[i], dense.index(i) if i in dense else None,
                     sparse.index(i) if i in sparse else None, sim[i]) for i in top]
+
+    def top_entries(self, query: str, k: int = 2, exclude_ids: set | frozenset = frozenset()) -> list[dict]:
+        """The k entries the chatbot answers from, with no similarity cut-off. A hit that belongs to a
+        summarized cluster is replaced by that cluster's summary, and duplicates collapse, so the k entries
+        cover different discussions. `exclude_ids` hides records (and summaries) from the ranking, e.g. the
+        held-out eval records while building training data."""
+        out, seen = [], set()
+        for h in self.search(query, k=4 * k + len(exclude_ids)):
+            if h.rec["id"] in exclude_ids:
+                continue
+            rec = self.summary_of.get(h.rec["id"], h.rec)
+            if rec["id"] in exclude_ids:
+                rec = h.rec
+            if rec["id"] not in seen:
+                seen.add(rec["id"])
+                out.append(rec)
+                if len(out) == k:
+                    break
+        return out

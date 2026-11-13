@@ -33,3 +33,10 @@ def test_edited_tag_and_colon_in_text():
 def test_bidi_marks_removed():
     msgs = parse(SAMPLE.splitlines())
     assert "‎" not in msgs[1].text and "‫" not in msgs[1].text
+
+
+def test_normalize_keeps_links_verbatim():
+    from src.ingest.filter import normalize
+    url = "https://www.daad.de/de/studium/Fintiba_blocked_account_info_"
+    assert normalize(f"شوف الرابط دا {url} شكراااا") == f"شوف الرابط دا {url} شكراا"
+    assert normalize("www.uni-assist.de كتيييير مهم") == "www.uni-assist.de كتيير مهم"

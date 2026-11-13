@@ -25,6 +25,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from .pii import URL_RE
+
 AR = "؀-ۿ"
 TATWEEL = "ـ"
 ZERO_WIDTH = re.compile("[​-‍⁠﻿­]")
@@ -92,8 +94,12 @@ QUESTION_WORDS = re.compile(
 
 def normalize(text: str) -> str:
     t = ZERO_WIDTH.sub("", text).replace(TATWEEL, "")
+    # links are kept verbatim: elongation would turn "www." into "ww." and WA_FORMAT eats "_" in paths
+    urls: list[str] = []
+    t = URL_RE.sub(lambda m: urls.append(m.group(0)) or f"\x00{len(urls) - 1}\x00", t)
     t = WA_FORMAT.sub(r"\2", t)
     t = ELONGATION.sub(r"\1\1", t)
+    t = re.sub("\x00(\\d+)\x00", lambda m: urls[int(m.group(1))], t)
     t = re.sub(f"({EMOJI.pattern})(?:{EMOJI.pattern}){{2,}}", r"\1", t)
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r" *\n *", "\n", t)

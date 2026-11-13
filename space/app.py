@@ -90,23 +90,6 @@ t0 = time.time()
 index_dir = os.environ.get("LOCAL_INDEX") or str(
     Path(snapshot_download(DATA_REPO, repo_type="dataset", allow_patterns=["index/*"], token=TOKEN)) / "index")
 retriever = HybridRetriever(index_dir)   # embedder stays on CPU: GPU quota is spent only on generation
-# group record id -> the summary of its question cluster (summaries consolidate several discussions)
-SUMMARY_OF = {m: r for r in retriever.records if r.get("source") == "summary" for m in r.get("members", [])}
-
-
-def retrieve(question: str, k: int = TOP_K) -> list[dict]:
-    """Top-k group entries, no similarity cut-off. A hit that belongs to a summarized cluster is replaced by
-    that cluster's summary; duplicates collapse so the k entries cover different discussions."""
-    out, seen = [], set()
-    for h in retriever.search(question, k=4 * k):
-        rec = SUMMARY_OF.get(h.rec["id"], h.rec)
-        if rec["id"] not in seen:
-            seen.add(rec["id"])
-            out.append(rec)
-            if len(out) == k:
-                break
-    return out
-
 if BACKEND == "zerogpu":
     from threading import Thread
 
@@ -124,7 +107,7 @@ if BACKEND == "zerogpu":
         ids = tokenizer.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt").to("cuda")
         streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
         kwargs = dict(input_ids=ids, attention_mask=torch.ones_like(ids), streamer=streamer, max_new_tokens=MAX_TOKENS,
-                      do_sample=True, temperature=0.3, top_p=0.9, repetition_penalty=1.05)
+                      do_sample=False, repetition_penalty=1.1)
         Thread(target=hf_model.generate, kwargs=kwargs).start()
         yield from streamer
 elif BACKEND == "remote":
@@ -156,8 +139,8 @@ else:
     def generate(msgs: list[dict]):
         if is_qwen3:
             msgs[-1]["content"] += " /no_think"
-        for chunk in llm.create_chat_completion(messages=msgs, stream=True, temperature=0.3, top_p=0.9,
-                                                max_tokens=MAX_TOKENS, repeat_penalty=1.05):
+        for chunk in llm.create_chat_completion(messages=msgs, stream=True, temperature=0.0,
+                                                max_tokens=MAX_TOKENS, repeat_penalty=1.1):
             delta = chunk["choices"][0]["delta"].get("content")
             if delta:
                 yield delta
@@ -202,12 +185,32 @@ def _sources_line(recs: list[dict], answer_text: str = "") -> str:
     return "📅 من القروب: " + "، ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
 
 
+URL_RE = re.compile(r"https?://[^\s<>\"'،)]+")
+LINK_LABEL_RE = re.compile(r"\s*(?:الرابط الرسمي|الرابط|رابط)\s*:\s*(?=$|\n)")
+
+
+def guard_links(text: str, recs: list[dict], final: bool = False) -> str:
+    """Keep only links that the retrieved group entries contain. While streaming, a URL at the very end may
+    still be incomplete, so it is checked only once the answer is final."""
+    allowed = {u.rstrip("/.") for r in recs for u in r.get("links", [])}
+
+    def repl(m: re.Match) -> str:
+        url = m.group(0).rstrip(".,؛!؟?")
+        tail = m.group(0)[len(url):]
+        if not final and m.end() == len(text):
+            return m.group(0)
+        return m.group(0) if url.rstrip("/") in allowed else tail
+
+    text = URL_RE.sub(repl, text)
+    return LINK_LABEL_RE.sub("", text) if final else text
+
+
 def answer(question: str, history: list | None = None):
     question = re.sub(r"\s+", " ", (question or "")).strip()[:1000]
     if not question:
         yield "اكتب سؤالك 🙂"
         return
-    recs = [] if SMALLTALK_RE.match(question) else retrieve(question)
+    recs = [] if SMALLTALK_RE.match(question) else retriever.top_entries(question, k=TOP_K)
     print(f"retrieved: {[r['id'] for r in recs]}", flush=True)
     msgs = build_messages(question, recs, _clean_history(history))
     text = ""
@@ -215,7 +218,7 @@ def answer(question: str, history: list | None = None):
         try:
             for piece in generate(msgs):
                 text += piece
-                yield text
+                yield guard_links(text, recs)
             break
         except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
             print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
@@ -226,7 +229,8 @@ def answer(question: str, history: list | None = None):
             # every final message ends with SOURCES_SEP so the web page knows the answer is complete
             yield (text + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
             return
-    yield text.strip() + SOURCES_SEP + _sources_line(recs, text)
+    text = guard_links(text.strip(), recs, final=True)
+    yield text + SOURCES_SEP + _sources_line(recs, text)
 
 
 def feedback(question: str, answer_text: str, rating: str) -> str:

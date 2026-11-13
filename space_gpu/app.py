@@ -39,7 +39,7 @@ def generate(messages_json: str):
     ids = tokenizer.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt").to("cuda")
     streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
     kwargs = dict(input_ids=ids, attention_mask=torch.ones_like(ids), streamer=streamer,
-                  max_new_tokens=MAX_NEW_TOKENS, do_sample=True, temperature=0.3, top_p=0.9, repetition_penalty=1.05)
+                  max_new_tokens=MAX_NEW_TOKENS, do_sample=False, repetition_penalty=1.1)  # greedy: stick to the context
     Thread(target=model.generate, kwargs=kwargs).start()
     text = ""
     for piece in streamer:
