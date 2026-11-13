@@ -72,3 +72,8 @@ def test_filter_flags():
     assert is_question("في زول عارف مواعيد السفارة في برلين؟")
     assert not is_question("ربنا يرحمه و يغفر ليه")
     assert normalize("هههههههه *مهم* جداااا") == "هه مهم جداا"
+
+
+def test_url_allowed_rejects_garbage():
+    assert not pii.url_allowed("[رابط]")
+    assert not pii.url_allowed("http://[not-an-ip]/x")

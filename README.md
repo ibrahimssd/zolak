@@ -13,15 +13,20 @@ links were removed.
 ## How it works
 
 ```
-Browser ──► GitHub Pages (web/)  ──►  Hugging Face Space (space/, free CPU)
+Browser ──► GitHub Pages (web/)  ──►  Oracle Cloud Always Free VM (deploy/oracle: Docker + Caddy HTTPS)
                                         ├─ hybrid retrieval: bge-m3 + BM25 over an anonymized, dated knowledge base
-                                        └─ llama.cpp: ALLaM-7B-Instruct (4-bit) → streamed answer in Sudanese dialect
+                                        └─ llama.cpp: Zolna-ALLaM-7B (LoRA fine-tune, 4-bit) → streamed answer in Sudanese dialect
 ```
 
 - **Facts come from retrieval, style from the model.** Rules and fees change, so every answer says when the
   information was shared in the group.
-- **Current version:** base ALLaM-7B with a knowledge base built directly from anonymized chat threads.
-  **Next:** a cleaned Q&A knowledge base (made by a larger model) and a Sudanese-dialect fine-tune.
+- **Knowledge base:** 1,445 Q&A distilled from 2,779 anonymized discussions by a large teacher model
+  (Qwen3-235B, run locally), normalized to Sudanese dialect and deduplicated.
+- **Model:** ALLaM-7B-Instruct fine-tuned with LoRA to answer in Sudanese dialect, cite the date of the
+  information and admit when the group has no answer (held-out test: date cited 6% → 100%,
+  honest "don't know" 5% → 100%).
+- **Hosting:** `deploy/oracle/` runs the backend on an Oracle Cloud Always Free ARM VM (2 cores, 12 GB)
+  behind Caddy with automatic HTTPS; see `deploy/oracle/setup.sh`.
 
 ## Privacy
 
@@ -39,7 +44,8 @@ Browser ──► GitHub Pages (web/)  ──►  Hugging Face Space (space/, fr
 | `src/ingest/` | WhatsApp parsing → anonymization → filtering → question threads → (LLM distillation) |
 | `src/rag/` | Knowledge-base and retrieval-index builders |
 | `src/train/` | Model bake-off, dialect meter, fine-tuning (upcoming) |
-| `space/` | Hugging Face Space app (Gradio + llama.cpp + retriever) |
+| `space/` | Chatbot backend app (Gradio + llama.cpp + retriever) |
+| `deploy/oracle/` | Docker image, Caddy HTTPS proxy and VM setup script for the backend |
 | `web/` | Static chat page for GitHub Pages |
 | `scripts/` | Pipeline runners, GGUF conversion, deployment, privacy scan |
 

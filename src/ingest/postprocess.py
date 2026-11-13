@@ -34,6 +34,42 @@ FOREIGN_SCRIPT_RE = re.compile(
 CONF_RANK = {"high": 2, "medium": 1, "low": 0}
 
 
+# ---------------------------------------------------------------- Sudanese-dialect normalization
+# The teacher keeps some Egyptian/Gulf forms even after its rewrite pass (full run: 608/1601 answers).
+# These word-level rules are safe: they only touch whole words and keep meaning.
+_W = r"(?<![\w])"
+_E = r"(?![\w])"
+SUDANIZE_RULES = [
+    (re.compile(_W + r"ما ?فيش" + _E), "ما في"),
+    (re.compile(_W + r"مش" + _E), "ما"),
+    (re.compile(_W + r"مو" + _E), "ما"),
+    (re.compile(_W + r"هذي" + _E), "دي"),
+    (re.compile(_W + r"دلوقتي" + _E), "هسي"),
+    (re.compile(_W + r"[إا]زاي" + _E), "كيف"),
+    (re.compile(_W + r"كده" + _E), "كدا"),       # Sudanese spelling
+]
+_NEG_SH = re.compile(_W + r"ما (\w{2,})ش" + _E)
+
+
+def build_vocab(texts: list[str]) -> Counter:
+    return Counter(w for t in texts for w in re.findall(r"\w+", t))
+
+
+def sudanize(text: str, vocab: Counter, counts: Counter) -> str:
+    for rx, rep in SUDANIZE_RULES:
+        text, n = rx.subn(rep, text)
+        counts["rule"] += n
+
+    def strip_sh(m: re.Match) -> str:
+        stem = m.group(1)
+        if vocab[stem] >= 2:  # «ما تحتاجش» -> «ما تحتاج» only when «تحتاج» is a real word in the corpus
+            counts["neg_sh"] += 1
+            return f"ما {stem}"
+        return m.group(0)
+
+    return _NEG_SH.sub(strip_sh, text)
+
+
 def load_name_re(lex_path: Path):
     if not lex_path.exists():
         return None
@@ -94,6 +130,13 @@ def main() -> None:
 
     name_re = load_name_re(Path("data/interim/pii_lexicon.json"))
     raw = [json.loads(l) for l in open(args.input, encoding="utf-8")]
+    vocab = build_vocab([r["output"]["answer"] for r in raw if r.get("output") and r["output"].get("useful")])
+    sd_counts: Counter = Counter()
+    for r in raw:
+        if r.get("output") and r["output"].get("useful"):
+            r["output"]["question"] = sudanize(r["output"]["question"], vocab, sd_counts)
+            r["output"]["answer"] = sudanize(r["output"]["answer"], vocab, sd_counts)
+    print("dialect normalization:", dict(sd_counts))
     drops: Counter = Counter()
     items: list[dict] = []
     for r in raw:

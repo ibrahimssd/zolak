@@ -1,0 +1,7 @@
+{$ZOLNA_DOMAIN} {
+	encode gzip
+	reverse_proxy zolna:7860 {
+		# stream answers token by token (server-sent events)
+		flush_interval -1
+	}
+}

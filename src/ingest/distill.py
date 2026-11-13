@@ -134,6 +134,81 @@ def load_jobs(proc: Path) -> list[dict]:
     return jobs
 
 
+# ---------------------------------------------------------------- stage 2: Sudanese-dialect rewrite
+# Stage 1 still drifts into Gulf/Egyptian/Levantine forms in ~40% of answers (trial v2). A second, focused pass
+# rewrites question + answer into Sudanese colloquial Arabic without changing content.
+REWRITE_SCHEMA = {
+    "type": "object",
+    "properties": {"question": {"type": "string"}, "answer": {"type": "string"}},
+    "required": ["question", "answer"],
+}
+
+REWRITE_SYSTEM = """You are a native speaker of Sudanese colloquial Arabic (العامية السودانية) and an editor.
+Rewrite the given question and answer so they read like a Sudanese student talking to a friend.
+
+Hard rules:
+- Keep the MEANING, every fact, number, date, amount, office name, German/English term and link exactly.
+  Do not add, remove or soften information. Keep about the same length.
+- Replace non-Sudanese forms. Examples:
+  مش / مو → ما      ما كانتش / ما تبقاش / ما تستخدمهاش (Egyptian -ش negation) → ما كانت / ما تبقى / ما تستخدمها
+  دلوقتي / الحين / هلق → هسي (or هسع)      إزاي / كيفاش / شلون → كيف      إيه / وش / شو → شنو
+  عايز is fine, also داير/دايرة      بدك / تبغى / ابغى → داير / عايز      هيـ / راح + verb (future) → حـ (حتلقى، حيطلبو)
+  يطلبون / يقولون (Gulf -ون) → بيطلبو / بيقولو      هذا / هذي / هاد → دا / دي      كتير/وايد → كتير/شديد
+  زين → كويس      يعطيك إياه → بيدّوك ليهو      بس fine, برضو for "also", عشان for "because/so that"
+- Prefer Sudanese verb forms: بيـ for habitual (بيطلبو، بتمشي), حـ for future, ما + verb for negation.
+- Arabic script only, plus German/English terms in Latin script. No other scripts. No formal MSA phrasing.
+Return JSON with the rewritten "question" and "answer"."""
+
+REWRITE_EXAMPLE_IN = """question: هل أقدر أسافر برة ألمانيا لو إقامتي قريبة من الانتهاء؟
+answer: لو إقامتك قربت تخلص، يقدر يسمحولك تسافر بس لازم تكون معك Fiktionsbescheinigung وتثبت إنك بدك تمديد. بس ما تستخدمهاش تسافر إلا إذا الدولة تقبل بيها."""
+REWRITE_EXAMPLE_OUT = json.dumps({
+    "question": "ممكن أسافر برة ألمانيا لو إقامتي قربت تخلص؟",
+    "answer": "لو إقامتك قربت تخلص، ممكن يسمحو ليك تسافر، بس لازم تكون معاك Fiktionsbescheinigung وتثبت إنك داير "
+              "تمديد. وما تسافر بيها إلا لو الدولة الماشي ليها بتقبلها.",
+}, ensure_ascii=False)
+
+
+def rewrite_messages(o: dict) -> list[dict]:
+    return [
+        {"role": "system", "content": REWRITE_SYSTEM},
+        {"role": "user", "content": REWRITE_EXAMPLE_IN},
+        {"role": "assistant", "content": REWRITE_EXAMPLE_OUT},
+        {"role": "user", "content": f"question: {o['question']}\nanswer: {o['answer']}"},
+    ]
+
+
+def run_rewrite(llm, rows: list[dict]) -> int:
+    """Rewrite useful outputs in place (original kept under output['stage1'])."""
+    from vllm import SamplingParams
+    from vllm.sampling_params import GuidedDecodingParams
+
+    targets = [r for r in rows if r.get("output") and r["output"].get("useful")]
+    params = SamplingParams(temperature=0.2, top_p=0.9, max_tokens=900,
+                            guided_decoding=GuidedDecodingParams(json=REWRITE_SCHEMA))
+    results = llm.chat([rewrite_messages(r["output"]) for r in targets], params, use_tqdm=True)
+    n = 0
+    for r, res in zip(targets, results):
+        try:
+            new = json.loads(res.outputs[0].text)
+        except json.JSONDecodeError:
+            continue
+        if len(new.get("answer", "")) < 0.5 * len(r["output"]["answer"]):  # rewrite dropped content → keep original
+            continue
+        r["output"]["stage1"] = {"question": r["output"]["question"], "answer": r["output"]["answer"]}
+        r["output"]["question"], r["output"]["answer"] = new["question"].strip(), new["answer"].strip()
+        n += 1
+    return n
+
+
+def dialect_report(rows: list[dict], key: str = "answer") -> str:
+    try:
+        from src.train.dialect import summarize
+    except ImportError:
+        return "(dialect meter unavailable)"
+    texts = [r["output"][key] for r in rows if r.get("output") and r["output"].get("useful")]
+    return str(summarize(texts))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--proc", default="data/processed")
@@ -142,33 +217,32 @@ def main() -> None:
     ap.add_argument("--tp", type=int, default=4, help="tensor parallel size")
     ap.add_argument("--limit", type=int, default=0, help="pilot: random sample of N jobs")
     ap.add_argument("--max-model-len", type=int, default=16384)
-    ap.add_argument("--resume", action="store_true", help="skip src_ids already in --out")
+    ap.add_argument("--no-rewrite", action="store_true", help="skip the stage-2 Sudanese-dialect rewrite")
+    ap.add_argument("--rewrite-input", default="", help="only run stage 2 on an existing raw file (writes --out)")
     args = ap.parse_args()
 
     from vllm import LLM, SamplingParams
     from vllm.sampling_params import GuidedDecodingParams
 
-    jobs = load_jobs(Path(args.proc))
-    if args.limit:
-        jobs = random.Random(0).sample(jobs, args.limit)
     out = Path(args.out if not args.limit else args.out.replace(".jsonl", f".pilot{args.limit}.jsonl"))
-    done = set()
-    if args.resume and out.exists():
-        done = {json.loads(l)["src_id"] for l in out.open(encoding="utf-8")}
-        jobs = [j for j in jobs if j["src_id"] not in done]
-    print(f"{len(jobs)} jobs ({sum(j['kind'] == 'thread' for j in jobs)} threads, "
-          f"{sum(j['kind'] == 'post' for j in jobs)} posts) -> {out}")
-
     llm = LLM(model=args.model, tensor_parallel_size=args.tp, max_model_len=args.max_model_len,
               gpu_memory_utilization=0.90, enable_prefix_caching=True, trust_remote_code=False)
-    params = SamplingParams(temperature=0.2, top_p=0.9, max_tokens=1500,
-                            guided_decoding=GuidedDecodingParams(json=SCHEMA))
-    convs = [[{"role": "system", "content": SYSTEM}, {"role": "user", "content": j["prompt"]}] for j in jobs]
-
     t0 = time.time()
-    results = llm.chat(convs, params, use_tqdm=True)
-    n_ok = 0
-    with out.open("a" if args.resume else "w", encoding="utf-8") as f:
+
+    if args.rewrite_input:
+        rows = [json.loads(l) for l in open(args.rewrite_input, encoding="utf-8")]
+        print(f"stage 2 only on {len(rows)} rows from {args.rewrite_input}")
+    else:
+        jobs = load_jobs(Path(args.proc))
+        if args.limit:
+            jobs = random.Random(0).sample(jobs, args.limit)
+        print(f"{len(jobs)} jobs ({sum(j['kind'] == 'thread' for j in jobs)} threads, "
+              f"{sum(j['kind'] == 'post' for j in jobs)} posts) -> {out}")
+        params = SamplingParams(temperature=0.2, top_p=0.9, max_tokens=1500,
+                                guided_decoding=GuidedDecodingParams(json=SCHEMA))
+        convs = [[{"role": "system", "content": SYSTEM}, {"role": "user", "content": j["prompt"]}] for j in jobs]
+        results = llm.chat(convs, params, use_tqdm=True)
+        rows, n_ok = [], 0
         for j, r in zip(jobs, results):
             text = r.outputs[0].text
             try:
@@ -176,10 +250,24 @@ def main() -> None:
                 n_ok += 1
             except json.JSONDecodeError as e:
                 data, err = None, str(e)
-            f.write(json.dumps({"src_id": j["src_id"], "kind": j["kind"], "date": j["date"], "teacher": args.model,
-                                "output": data, "error": err, "raw": None if data else text},
-                               ensure_ascii=False) + "\n")
-    print(f"done in {time.time() - t0:.0f}s; parsed {n_ok}/{len(jobs)}")
+            rows.append({"src_id": j["src_id"], "kind": j["kind"], "date": j["date"], "teacher": args.model,
+                         "output": data, "error": err, "raw": None if data else text})
+        print(f"stage 1 done in {time.time() - t0:.0f}s; parsed {n_ok}/{len(jobs)}; "
+              f"useful {sum(bool(r['output'] and r['output'].get('useful')) for r in rows)}")
+        stage1_path = out.with_suffix(".stage1.jsonl")
+        with stage1_path.open("w", encoding="utf-8") as f:  # checkpoint before stage 2
+            for r in rows:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    if not args.no_rewrite:
+        print("dialect before rewrite:", dialect_report(rows))
+        n = run_rewrite(llm, rows)
+        print(f"stage 2 rewrote {n} answers; dialect after rewrite:", dialect_report(rows))
+
+    with out.open("w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    print(f"all done in {time.time() - t0:.0f}s -> {out}")
 
 
 if __name__ == "__main__":

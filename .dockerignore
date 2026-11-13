@@ -1,0 +1,8 @@
+# The backend image only needs the app code; never send data, models or notes to the Docker daemon.
+*
+!space/
+!deploy/oracle/
+space/wheels/
+space/feedback/
+space/__pycache__/
+deploy/oracle/.env

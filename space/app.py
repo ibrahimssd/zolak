@@ -3,7 +3,7 @@
 Environment (Space settings → Variables and secrets):
   HF_TOKEN        secret; read private model/dataset, write feedback
   MODEL_REPO      private model repo holding the GGUF            (e.g. <user>/zolna-models)
-  MODEL_FILE      GGUF file name                                 (default ALLaM-7B-Instruct-preview-Q4_K_M.gguf)
+  MODEL_FILE      GGUF file name                                 (default zolna-allam-v1-Q4_K_M.gguf, the LoRA fine-tune)
   DATA_REPO       private dataset repo with index/{kb.faiss,kb.jsonl,config.json}
   FEEDBACK_REPO   private dataset repo for 👍/👎 feedback (optional)
 Local testing: LOCAL_MODEL=/path/model.gguf LOCAL_INDEX=/path/index python app.py
@@ -22,6 +22,14 @@ import time
 import uuid
 from pathlib import Path
 
+# Pin every thread pool BEFORE the libraries load. Inside a container the libraries see all host cores
+# (e.g. 384) while the CPU quota is 2: OpenMP (faiss), the tokenizers pool and torch would start hundreds of
+# busy-waiting threads and starve llama.cpp (measured: no answer after 8 min instead of ~1 min).
+_THREADS = os.environ.get("N_THREADS") or str(os.cpu_count() or 2)
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"):
+    os.environ.setdefault(_var, _THREADS)
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import gradio as gr
 from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 from llama_cpp import Llama
@@ -31,10 +39,16 @@ from retriever import HybridRetriever
 
 TOKEN = os.environ.get("HF_TOKEN")
 MODEL_REPO = os.environ.get("MODEL_REPO", "")
-MODEL_FILE = os.environ.get("MODEL_FILE", "ALLaM-7B-Instruct-preview-Q4_K_M.gguf")
+MODEL_FILE = os.environ.get("MODEL_FILE", "zolna-allam-v1-Q4_K_M.gguf")
 DATA_REPO = os.environ.get("DATA_REPO", "")
 FEEDBACK_REPO = os.environ.get("FEEDBACK_REPO", "")
 N_THREADS = int(os.environ.get("N_THREADS", os.cpu_count() or 2))
+try:  # torch's own pools (intra-op and inter-op) follow the same limit
+    import torch
+    torch.set_num_threads(N_THREADS)
+    torch.set_num_interop_threads(1)
+except (ImportError, RuntimeError):
+    pass
 # MIN_SIM calibrated on the raw-thread KB: relevant top hits 0.52-0.72, off-topic mostly 0.34-0.51
 TOP_K, MIN_SIM, MAX_TOKENS, HISTORY_TURNS = 2, 0.55, 220, 2
 SOURCES_SEP = "\n\n---\n"
@@ -133,4 +147,6 @@ with gr.Blocks(title="Zolna", theme=gr.themes.Soft()) as demo:
 demo.queue(default_concurrency_limit=1, max_size=40)
 
 if __name__ == "__main__":
+    # CORS: Gradio echoes the caller's origin whenever the server's own host name is not localhost, so the GitHub
+    # Pages site can call https://<domain>/ behind the reverse proxy without extra settings.
     demo.launch(server_name=os.environ.get("HOST", "0.0.0.0"), server_port=int(os.environ.get("PORT", 7860)))

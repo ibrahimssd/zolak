@@ -43,3 +43,14 @@ def test_schema_topics_and_format():
     ]}
     s = format_thread(t)
     assert "2025-01-02" in s and "[السائل] (سؤال) 10:05" in s and "[عضو1] (رد) 10:07" in s
+
+
+def test_sudanize_rules():
+    from collections import Counter
+    from src.ingest.postprocess import build_vocab, sudanize
+    vocab = build_vocab(["ما تحتاج تمشي", "تحتاج ورق"])
+    c = Counter()
+    assert sudanize("ما فيش مشكلة", vocab, c) == "ما في مشكلة"
+    assert sudanize("ما تحتاجش ورق", vocab, c) == "ما تحتاج ورق"
+    assert sudanize("ما بتفتش", vocab, c) == "ما بتفتش"            # stem not in corpus: untouched
+    assert sudanize("المشكلة مشي عادي", vocab, c) == "المشكلة مشي عادي"  # only whole words

@@ -1,0 +1,10 @@
+# LoRA fine-tuning environment for the student (ALLaM-7B). CUDA 12.4 driver -> torch 2.6.0+cu124.
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0
+transformers==4.51.3
+peft==0.15.2
+trl==0.17.0
+accelerate==1.6.0
+datasets==3.5.0
+sentencepiece==0.2.0
+protobuf<5

@@ -36,3 +36,7 @@ PLAN.md
 
 # local technical report (publish only on request)
 report/
+
+# server secrets (written on the VM by deploy/oracle/setup.sh)
+deploy/oracle/.env
+*secrets.env

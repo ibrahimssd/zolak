@@ -68,7 +68,10 @@ def normalize_digits(text: str) -> str:
 
 def url_allowed(url: str) -> bool:
     u = url if "://" in url else "http://" + url
-    host = (urlparse(u).hostname or "").lower().removeprefix("www.")
+    try:
+        host = (urlparse(u).hostname or "").lower().removeprefix("www.")
+    except ValueError:  # e.g. a placeholder like "[رابط]" parsed as a bracketed IPv6 host
+        return False
     if not host:
         return False
     if UNIVERSITY_DOMAIN_RE.search(host):
