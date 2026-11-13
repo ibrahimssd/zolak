@@ -3,7 +3,7 @@ will run them. Quality: same 12 probes / prompt as bakeoff.py. Speed: llama-benc
 
 Usage:
     source scripts/env.sh
-    python3 -m src.train.bakeoff_cpu                       # all *-Q4_K_M.gguf in $ZOLNA_MODELS/gguf
+    python3 -m src.train.bakeoff_cpu                       # all *-Q4_K_M.gguf in $ZOLAK_MODELS/gguf
     python3 -m src.train.bakeoff_cpu --only Qwen3-4B       # one model
     python3 -m src.train.bakeoff_cpu --summarize
 """
@@ -20,9 +20,9 @@ from pathlib import Path
 
 from src.train.bakeoff import PROBES, build_messages, summarize, to_model_messages
 
-STORAGE = Path(os.environ.get("ZOLNA_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/zolna"))
+STORAGE = Path(os.environ.get("ZOLAK_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/zolak"))
 LLAMA_BIN = STORAGE / "llama.cpp" / "build" / "bin"
-GGUF_DIR = Path(os.environ.get("ZOLNA_MODELS", STORAGE / "models")) / "gguf"
+GGUF_DIR = Path(os.environ.get("ZOLAK_MODELS", STORAGE / "models")) / "gguf"
 OUT_DIR = Path("data/interim/bakeoff/probe_cpu")
 SPEED_CORES = "100,101"     # 2 cores, like the free Space
 QUALITY_THREADS = 32        # be nice on the shared server

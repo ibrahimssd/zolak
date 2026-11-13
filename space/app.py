@@ -1,9 +1,9 @@
-"""Zolna — Hugging Face Space (free CPU): hybrid retrieval over the community KB + llama.cpp generation.
+"""Zolak — Hugging Face Space (free CPU): hybrid retrieval over the community KB + llama.cpp generation.
 
 Environment (Space settings → Variables and secrets):
   HF_TOKEN        secret; read private model/dataset, write feedback
-  MODEL_REPO      private model repo holding the GGUF            (e.g. <user>/zolna-models)
-  MODEL_FILE      GGUF file name                                 (default zolna-allam-v1-Q4_K_M.gguf, the LoRA fine-tune)
+  MODEL_REPO      private model repo holding the GGUF            (e.g. <user>/zolak-models)
+  MODEL_FILE      GGUF file name                                 (default zolak-allam-v1-Q4_K_M.gguf, the LoRA fine-tune)
   DATA_REPO       private dataset repo with index/{kb.faiss,kb.jsonl,config.json}
   FEEDBACK_REPO   private dataset repo for 👍/👎 feedback (optional)
 Local testing: LOCAL_MODEL=/path/model.gguf LOCAL_INDEX=/path/index python app.py
@@ -25,24 +25,50 @@ from pathlib import Path
 # Pin every thread pool BEFORE the libraries load. Inside a container the libraries see all host cores
 # (e.g. 384) while the CPU quota is 2: OpenMP (faiss), the tokenizers pool and torch would start hundreds of
 # busy-waiting threads and starve llama.cpp (measured: no answer after 8 min instead of ~1 min).
-_THREADS = os.environ.get("N_THREADS") or str(os.cpu_count() or 2)
+def _available_cpus() -> int:
+    """CPUs this process may really use: the container's CFS quota (cgroup v2/v1), else the affinity mask.
+    os.cpu_count() reports the host's cores (16 on a Hugging Face cpu-basic Space with a 2-vCPU quota)."""
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()[:2]
+        if quota != "max":
+            return max(1, int(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    try:
+        quota = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read())
+        period = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+        if quota > 0:
+            return max(1, quota // period)
+    except (OSError, ValueError):
+        pass
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return os.cpu_count() or 2
+
+
+_THREADS = os.environ.get("N_THREADS") or str(_available_cpus())
+os.environ["N_THREADS"] = _THREADS
 for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "RAYON_NUM_THREADS"):
     os.environ.setdefault(_var, _THREADS)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 import gradio as gr
 from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
-from llama_cpp import Llama
 
 from prompts import build_messages
 from retriever import HybridRetriever
 
 TOKEN = os.environ.get("HF_TOKEN")
+# BACKEND: "zerogpu" = full-precision model with PyTorch on Hugging Face ZeroGPU (included in PRO, quota-based)
+#          "llamacpp" = 4-bit GGUF on CPU (any machine)
+BACKEND = os.environ.get("BACKEND", "llamacpp")
 MODEL_REPO = os.environ.get("MODEL_REPO", "")
-MODEL_FILE = os.environ.get("MODEL_FILE", "zolna-allam-v1-Q4_K_M.gguf")
+MODEL_FILE = os.environ.get("MODEL_FILE", "zolak-allam-v2-Q4_K_M.gguf")     # llamacpp
+MODEL_SUBDIR = os.environ.get("MODEL_SUBDIR", "zolak-allam-v2")             # zerogpu (safetensors folder)
 DATA_REPO = os.environ.get("DATA_REPO", "")
 FEEDBACK_REPO = os.environ.get("FEEDBACK_REPO", "")
-N_THREADS = int(os.environ.get("N_THREADS", os.cpu_count() or 2))
+N_THREADS = int(_THREADS)
 try:  # torch's own pools (intra-op and inter-op) follow the same limit
     import torch
     torch.set_num_threads(N_THREADS)
@@ -55,13 +81,48 @@ SOURCES_SEP = "\n\n---\n"
 
 # ---------------------------------------------------------------- load
 t0 = time.time()
-model_path = os.environ.get("LOCAL_MODEL") or hf_hub_download(MODEL_REPO, MODEL_FILE, token=TOKEN)
 index_dir = os.environ.get("LOCAL_INDEX") or str(
     Path(snapshot_download(DATA_REPO, repo_type="dataset", allow_patterns=["index/*"], token=TOKEN)) / "index")
-retriever = HybridRetriever(index_dir)
-llm = Llama(model_path=model_path, n_ctx=4096, n_threads=N_THREADS, n_batch=512, verbose=False)
-IS_QWEN3 = "qwen3" in Path(model_path).name.lower()
-print(f"loaded model + {len(retriever.records)} KB records in {time.time() - t0:.0f}s (threads={N_THREADS})")
+retriever = HybridRetriever(index_dir)   # embedder stays on CPU: GPU quota is spent only on generation
+
+if BACKEND == "zerogpu":
+    from threading import Thread
+
+    import spaces
+    from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+
+    model_dir = os.environ.get("LOCAL_MODEL") or str(
+        Path(snapshot_download(MODEL_REPO, allow_patterns=[f"{MODEL_SUBDIR}/*"], token=TOKEN)) / MODEL_SUBDIR)
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    hf_model = AutoModelForCausalLM.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
+    hf_model.to("cuda")  # on ZeroGPU the weights move to the GPU when one is attached to a call
+
+    @spaces.GPU(duration=60)
+    def generate(msgs: list[dict]):
+        ids = tokenizer.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt").to("cuda")
+        streamer = TextIteratorStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
+        kwargs = dict(input_ids=ids, attention_mask=torch.ones_like(ids), streamer=streamer, max_new_tokens=MAX_TOKENS,
+                      do_sample=True, temperature=0.3, top_p=0.9, repetition_penalty=1.05)
+        Thread(target=hf_model.generate, kwargs=kwargs).start()
+        yield from streamer
+else:
+    from llama_cpp import Llama
+
+    model_path = os.environ.get("LOCAL_MODEL") or hf_hub_download(MODEL_REPO, MODEL_FILE, token=TOKEN)
+    llm = Llama(model_path=model_path, n_ctx=4096, n_threads=N_THREADS, n_batch=512, verbose=False)
+    is_qwen3 = "qwen3" in Path(model_path).name.lower()
+
+    def generate(msgs: list[dict]):
+        if is_qwen3:
+            msgs[-1]["content"] += " /no_think"
+        for chunk in llm.create_chat_completion(messages=msgs, stream=True, temperature=0.3, top_p=0.9,
+                                                max_tokens=MAX_TOKENS, repeat_penalty=1.05):
+            delta = chunk["choices"][0]["delta"].get("content")
+            if delta:
+                yield delta
+
+print(f"loaded {BACKEND} model + {len(retriever.records)} KB records in {time.time() - t0:.0f}s (threads={N_THREADS})")
+BUSY = "⏳ زولك عليه ضغط شديد هسي (حصة الـ GPU اليومية خلصت). جرب تاني بعد شوية."
 
 scheduler = None
 FEEDBACK_DIR = Path("feedback")
@@ -96,15 +157,16 @@ def answer(question: str, history: list | None = None):
     hits = [h for h in retriever.search(question, k=TOP_K) if h.dense_sim >= MIN_SIM]
     recs = [h.rec for h in hits]
     msgs = build_messages(question, recs, _clean_history(history))
-    if IS_QWEN3:
-        msgs[-1]["content"] += " /no_think"
     text = ""
-    for chunk in llm.create_chat_completion(messages=msgs, stream=True, temperature=0.3, top_p=0.9,
-                                            max_tokens=MAX_TOKENS, repeat_penalty=1.05):
-        delta = chunk["choices"][0]["delta"].get("content")
-        if delta:
-            text += delta
+    try:
+        for piece in generate(msgs):
+            text += piece
             yield text
+    except Exception as e:  # ZeroGPU: this visitor's daily GPU quota is used up (never billed) -> friendly message
+        if "quota" not in str(e).lower() and "gpu" not in str(e).lower():
+            raise
+        yield (text + "\n\n" if text else "") + BUSY
+        return
     yield text.strip() + SOURCES_SEP + _sources_line(recs)
 
 
@@ -127,11 +189,11 @@ EXAMPLES = [
     "جوازي السوداني قرب يخلص وانا في ألمانيا، اجدده وين؟",
     "ممكن اشتغل وانا طالب؟ كم ساعة مسموح؟",
 ]
-HEADER = """## زولنا 🇸🇩 — مساعد الطلاب السودانيين في ألمانيا
+HEADER = """## زولك 🇸🇩 — مساعد الطلاب السودانيين في ألمانيا
 بيجاوب من تجارب أعضاء قروب «طلاب السودان في ألمانيا» (بعد حذف أي معلومات شخصية).
 ⚠️ دي تجارب ناس ما استشارة قانونية — اتأكد دايماً من الجهات الرسمية."""
 
-with gr.Blocks(title="Zolna", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="Zolak", theme=gr.themes.Soft()) as demo:
     gr.Markdown(HEADER, rtl=True)
     gr.ChatInterface(
         fn=answer, type="messages", examples=EXAMPLES, cache_examples=False,

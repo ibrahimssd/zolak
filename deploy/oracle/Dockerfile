@@ -1,4 +1,4 @@
-# Zolna backend: Gradio + llama.cpp + hybrid retriever (space/app.py).
+# Zolak backend: Gradio + llama.cpp + hybrid retriever (space/app.py).
 # Build context = repository root (see docker-compose.yml). Works on aarch64 (Oracle A1) and x86_64.
 FROM python:3.10-slim
 

@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Set up (or update) the Zolna backend on an Oracle Cloud Always Free A1 VM (Ubuntu 22.04, aarch64).
+# Set up (or update) the Zolak backend on an Oracle Cloud Always Free A1 VM (Ubuntu 22.04, aarch64).
 # Idempotent: safe to run again after `git pull` or to change settings.
 #
-# Usage on the VM:   bash setup.sh ~/zolna-secrets.env
+# Usage on the VM:   bash setup.sh ~/zolak-secrets.env
 # The secrets file (chmod 600) defines:
-#   DUCKDNS_SUBDOMAIN=zolna        DUCKDNS_TOKEN=...        HF_TOKEN=...   (fine-grained token)
-# Optional: MODEL_FILE=... (default zolna-allam-v1-Q4_K_M.gguf; base model: ALLaM-7B-Instruct-preview-Q4_K_M.gguf), REPO=... (git URL)
+#   DUCKDNS_SUBDOMAIN=zolak        DUCKDNS_TOKEN=...        HF_TOKEN=...   (fine-grained token)
+# Optional: MODEL_FILE=... (default zolak-allam-v1-Q4_K_M.gguf; base model: ALLaM-7B-Instruct-preview-Q4_K_M.gguf), REPO=... (git URL)
 set -euo pipefail
 
-SECRETS="${1:-$HOME/zolna-secrets.env}"
+SECRETS="${1:-$HOME/zolak-secrets.env}"
 # shellcheck disable=SC1090
 source "$SECRETS"
 : "${DUCKDNS_SUBDOMAIN:?missing}" "${DUCKDNS_TOKEN:?missing}" "${HF_TOKEN:?missing}"
 DOMAIN="${DUCKDNS_SUBDOMAIN}.duckdns.org"
-REPO="${REPO:-https://github.com/ibrahimssd/zolna.git}"
-MODEL_FILE="${MODEL_FILE:-zolna-allam-v1-Q4_K_M.gguf}"
-DIR="$HOME/zolna"
+REPO="${REPO:-https://github.com/ibrahimssd/zolak.git}"
+MODEL_FILE="${MODEL_FILE:-zolak-allam-v1-Q4_K_M.gguf}"
+DIR="$HOME/zolak"
 
 echo "== 1/6 Docker"
 if ! command -v docker > /dev/null; then
@@ -45,12 +45,12 @@ echo "== 5/6 Configuration + DuckDNS"
 cd "$DIR/deploy/oracle"
 ( umask 077
   cat > .env << EOF
-ZOLNA_DOMAIN=$DOMAIN
+ZOLAK_DOMAIN=$DOMAIN
 HF_TOKEN=$HF_TOKEN
-MODEL_REPO=ibrahimssd11/zolna-models
+MODEL_REPO=ibrahimssd11/zolak-models
 MODEL_FILE=$MODEL_FILE
-DATA_REPO=ibrahimssd11/zolna-data
-FEEDBACK_REPO=ibrahimssd11/zolna-feedback
+DATA_REPO=ibrahimssd11/zolak-data
+FEEDBACK_REPO=ibrahimssd11/zolak-feedback
 EOF
 )
 UPDATE_URL="https://www.duckdns.org/update?domains=${DUCKDNS_SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip="
@@ -61,5 +61,5 @@ echo "DuckDNS update: $(curl -fsS "$UPDATE_URL")"
 echo "== 6/6 Build and start (first build compiles llama.cpp: ~10-15 min on 2 cores)"
 sudo docker compose up -d --build
 sudo docker compose ps
-echo "Done. Follow startup with: sudo docker compose -f $DIR/deploy/oracle/docker-compose.yml logs -f zolna"
+echo "Done. Follow startup with: sudo docker compose -f $DIR/deploy/oracle/docker-compose.yml logs -f zolak"
 echo "Backend URL: https://$DOMAIN/"

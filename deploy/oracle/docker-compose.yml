@@ -1,7 +1,7 @@
-# Zolna backend on one small VM: the chatbot app behind Caddy (automatic HTTPS via Let's Encrypt).
+# Zolak backend on one small VM: the chatbot app behind Caddy (automatic HTTPS via Let's Encrypt).
 # Configuration lives in deploy/oracle/.env (written by setup.sh, never committed).
 services:
-  zolna:
+  zolak:
     build:
       context: ../..
       dockerfile: deploy/oracle/Dockerfile
@@ -23,13 +23,13 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      ZOLNA_DOMAIN: ${ZOLNA_DOMAIN}
+      ZOLAK_DOMAIN: ${ZOLAK_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
-      - zolna
+      - zolak
     restart: unless-stopped
 
 volumes:

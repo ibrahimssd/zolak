@@ -14,7 +14,7 @@ Summary (dialect meter + side-by-side review file):
 
 Usage:
   source scripts/env.sh
-  for m in ...; do CUDA_VISIBLE_DEVICES=4 $ZOLNA_VENVS/vllm/bin/python -m src.train.bakeoff --mode probe --model $m; done
+  for m in ...; do CUDA_VISIBLE_DEVICES=4 $ZOLAK_VENVS/vllm/bin/python -m src.train.bakeoff --mode probe --model $m; done
 """
 from __future__ import annotations
 

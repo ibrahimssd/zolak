@@ -1,10 +1,10 @@
 """Deploy to Hugging Face (run on this server after `hf auth login` with a WRITE token).
 
 Creates (if missing) and uploads:
-  <user>/zolna-models     PRIVATE model repo   <- GGUF model file
-  <user>/zolna-data       PRIVATE dataset      <- index/ (kb.faiss, kb.jsonl, config.json)
-  <user>/zolna-feedback   PRIVATE dataset      <- written by the Space (👍/👎)
-  <user>/zolna            PUBLIC Gradio Space  <- space/ (code only), with secret HF_TOKEN + variables
+  <user>/zolak-models     PRIVATE model repo   <- GGUF model file
+  <user>/zolak-data       PRIVATE dataset      <- index/ (kb.faiss, kb.jsonl, config.json)
+  <user>/zolak-feedback   PRIVATE dataset      <- written by the Space (👍/👎)
+  <user>/zolak            PUBLIC Gradio Space  <- space/ (code only), with secret HF_TOKEN + variables
 
 Usage:
   source scripts/env.sh
@@ -24,16 +24,19 @@ from pathlib import Path
 from huggingface_hub import HfApi, get_token
 
 ROOT = Path(__file__).resolve().parents[1]
-STORAGE = Path(os.environ.get("ZOLNA_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/zolna"))
+STORAGE = Path(os.environ.get("ZOLAK_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/zolak"))
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--step", choices=["model", "data", "space", "all"], required=True)
-    ap.add_argument("--model-file", default=str(STORAGE / "models/gguf/ALLaM-7B-Instruct-preview-Q4_K_M.gguf"))
+    ap.add_argument("--model-file", default=str(STORAGE / "models/gguf/zolak-allam-v2-Q4_K_M.gguf"))
     ap.add_argument("--index-dir", default=str(ROOT / "data/index"))
-    ap.add_argument("--space-name", default="zolna")
+    ap.add_argument("--space-name", default="zolak")
     ap.add_argument("--wheel-url", default="", help="public URL of the llama-cpp-python wheel (GitHub release)")
+    ap.add_argument("--backend", choices=["zerogpu", "llamacpp"], default="zerogpu",
+                    help="zerogpu = PRO ZeroGPU (PyTorch, fast); llamacpp = 4-bit GGUF on free CPU")
+    ap.add_argument("--model-subdir", default="zolak-allam-v2", help="safetensors folder in the model repo (zerogpu)")
     args = ap.parse_args()
 
     token = get_token()
@@ -41,7 +44,7 @@ def main() -> None:
         sys.exit("Not logged in: run `hf auth login` with a WRITE token first.")
     api = HfApi(token=token)
     user = api.whoami()["name"]
-    model_repo, data_repo, fb_repo = f"{user}/zolna-models", f"{user}/zolna-data", f"{user}/zolna-feedback"
+    model_repo, data_repo, fb_repo = f"{user}/zolak-models", f"{user}/zolak-data", f"{user}/zolak-feedback"
     space_repo = f"{user}/{args.space_name}"
     steps = {"model", "data", "space"} if args.step == "all" else {args.step}
 
@@ -62,21 +65,29 @@ def main() -> None:
                           allow_patterns=["kb.faiss", "kb.jsonl", "config.json"])
 
     if "space" in steps:
-        req = (ROOT / "space/requirements.txt").read_text()
-        if "__WHEEL_URL__" in req:
-            if not args.wheel_url:
-                sys.exit("space/requirements.txt still has __WHEEL_URL__: pass --wheel-url (GitHub release asset)")
-            req = req.replace("__WHEEL_URL__", args.wheel_url)
+        if args.backend == "zerogpu":
+            req = (ROOT / "space/requirements-zerogpu.txt").read_text()
+        else:
+            req = (ROOT / "space/requirements.txt").read_text()
+            if "__WHEEL_URL__" in req:
+                if not args.wheel_url:
+                    sys.exit("space/requirements.txt still has __WHEEL_URL__: pass --wheel-url (GitHub release asset)")
+                req = req.replace("__WHEEL_URL__", args.wheel_url)
         api.create_repo(fb_repo, repo_type="dataset", private=True, exist_ok=True)
         api.create_repo(space_repo, repo_type="space", space_sdk="gradio", private=False, exist_ok=True)
         api.add_space_secret(space_repo, "HF_TOKEN", token)
-        for k, v in {"MODEL_REPO": model_repo, "MODEL_FILE": Path(args.model_file).name,
-                     "DATA_REPO": data_repo, "FEEDBACK_REPO": fb_repo}.items():
+        for k, v in {"BACKEND": args.backend, "MODEL_REPO": model_repo, "MODEL_FILE": Path(args.model_file).name,
+                     "MODEL_SUBDIR": args.model_subdir, "DATA_REPO": data_repo, "FEEDBACK_REPO": fb_repo,
+                     "N_THREADS": "2"}.items():  # cpu-basic = 2 vCPU quota; more threads stall llama.cpp
             api.add_space_variable(space_repo, k, v)
         api.upload_folder(folder_path=str(ROOT / "space"), repo_id=space_repo, repo_type="space",
-                          ignore_patterns=["wheels/*", "__pycache__/*", "feedback/*", "requirements.txt"])
+                          ignore_patterns=["wheels/*", "__pycache__/*", "feedback/*", "requirements*.txt"])
         api.upload_file(path_or_fileobj=req.encode(), path_in_repo="requirements.txt", repo_id=space_repo,
                         repo_type="space")
+        # Only hardware included in the flat PRO plan: ZeroGPU (quota-based) or the free cpu-basic. Never paid tiers.
+        hw = "zero-a10g" if args.backend == "zerogpu" else "cpu-basic"
+        api.request_space_hardware(space_repo, hw)
+        print("hardware:", hw)
         print(f"Space: https://huggingface.co/spaces/{space_repo}  (API: {space_repo})")
 
 

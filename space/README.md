@@ -1,6 +1,6 @@
 ---
-title: Zolna
-emoji: 🇸🇩
+title: Zolak
+emoji: ☕
 colorFrom: green
 colorTo: yellow
 sdk: gradio
@@ -12,7 +12,7 @@ license: apache-2.0
 short_description: Sudanese-dialect helper for Sudanese students in Germany
 ---
 
-# زولنا — Zolna
+# زولك — Zolak
 
 Answers questions from Sudanese students and newcomers in Germany, in Sudanese dialect, grounded in the
 anonymized experience of the community group "طلاب السودان في ألمانيا".

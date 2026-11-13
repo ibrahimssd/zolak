@@ -1,0 +1,12 @@
+# ZeroGPU backend (Hugging Face PRO): full-precision Zolak-ALLaM-7B with PyTorch on a shared GPU.
+# torch 2.8 ships CUDA 12.8 kernels, needed for the Blackwell GPUs behind ZeroGPU.
+gradio==5.49.1
+spaces
+torch==2.8.0
+transformers==4.51.3
+accelerate==1.6.0
+sentence-transformers>=3.0,<4.0
+faiss-cpu>=1.8,<1.12
+rank-bm25==0.2.2
+huggingface_hub>=0.30,<1.0
+numpy<2.3

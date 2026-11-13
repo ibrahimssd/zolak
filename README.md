@@ -1,4 +1,4 @@
-# زولنا — Zolna
+# زولك — Zolak
 
 A free chatbot that answers questions from Sudanese students and newcomers in Germany **in Sudanese Arabic**.
 It covers visas, blocked accounts (Sperrkonto), residence permits, university admission, jobs, housing and more.
@@ -15,7 +15,7 @@ links were removed.
 ```
 Browser ──► GitHub Pages (web/)  ──►  Oracle Cloud Always Free VM (deploy/oracle: Docker + Caddy HTTPS)
                                         ├─ hybrid retrieval: bge-m3 + BM25 over an anonymized, dated knowledge base
-                                        └─ llama.cpp: Zolna-ALLaM-7B (LoRA fine-tune, 4-bit) → streamed answer in Sudanese dialect
+                                        └─ llama.cpp: Zolak-ALLaM-7B (LoRA fine-tune, 4-bit) → streamed answer in Sudanese dialect
 ```
 
 - **Facts come from retrieval, style from the model.** Rules and fees change, so every answer says when the

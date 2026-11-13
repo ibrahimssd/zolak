@@ -8,8 +8,8 @@ Output: data/interim/distill_raw.jsonl   raw teacher outputs (for review / re-ru
 
 Run (with the vLLM venv):
     source scripts/env.sh
-    $ZOLNA_VENVS/vllm/bin/python -m src.ingest.distill --limit 30          # pilot
-    $ZOLNA_VENVS/vllm/bin/python -m src.ingest.distill                     # all
+    $ZOLAK_VENVS/vllm/bin/python -m src.ingest.distill --limit 30          # pilot
+    $ZOLAK_VENVS/vllm/bin/python -m src.ingest.distill                     # all
 """
 from __future__ import annotations
 
