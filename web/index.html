@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>سوداشات — رفيقك في ألمانيا</title>
+  <meta name="description" content="سوداشات: مساعد بالعامية السودانية للطلاب والقادمين الجداد من السودان في ألمانيا — من تجارب الطلاب السودانيين.">
+  <meta name="theme-color" content="#b5532e">
+  <meta property="og:title" content="سوداشات — رفيقك في ألمانيا">
+  <meta property="og:description" content="اسأل بالعامية عن الفيزا، الحساب المغلق، الإقامة، الجامعة، الشغل والسكن.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M27 8h8l2 20h-12z' fill='%23b5532e'/%3E%3Ccircle cx='31' cy='42' r='16' fill='%23b5532e'/%3E%3Cpath d='M45 36c6-4 9-10 11-16' stroke='%23b5532e' stroke-width='4' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Reem+Kufi:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- shared SVG definitions: Nubian wall-painting pattern -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <pattern id="nubian" width="96" height="28" patternUnits="userSpaceOnUse">
+        <rect width="96" height="28" style="fill:var(--sand)"/>
+        <path d="M0 28 L12 6 L24 28Z" style="fill:var(--clay)"/>
+        <path d="M24 28 L36 6 L48 28Z" style="fill:var(--sun)"/>
+        <path d="M48 28 L60 6 L72 28Z" style="fill:var(--nile)"/>
+        <path d="M72 28 L84 6 L96 28Z" style="fill:var(--palm)"/>
+        <path d="M12 0 L18 6 L12 12 L6 6Z" style="fill:var(--indigo)"/>
+        <path d="M36 0 L42 6 L36 12 L30 6Z" style="fill:var(--clay)"/>
+        <path d="M60 0 L66 6 L60 12 L54 6Z" style="fill:var(--sun)"/>
+        <path d="M84 0 L90 6 L84 12 L78 6Z" style="fill:var(--nile)"/>
+      </pattern>
+    </defs>
+  </svg>
+
+  <header class="top">
+    <a class="brand" href="#" aria-label="سوداشات">
+      <svg class="jebena" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M26 6h10" style="stroke:var(--sun)" stroke-width="3" stroke-linecap="round"/>
+        <path d="M27 9h8l2 19H25z" style="fill:var(--clay)"/>
+        <circle cx="31" cy="42" r="16" style="fill:var(--clay)"/>
+        <path d="M22 40c3 5 15 5 18 0" style="stroke:var(--sun)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <path d="M45 37c6-4 9-10 11-17" style="stroke:var(--clay)" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M17 36c-6-3-6-12 2-15" style="stroke:var(--ink)" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-name">سوداشات</span>
+    </a>
+    <nav class="top-links">
+      <a href="#ask-section">اسأل</a>
+      <a href="#about">عن المشروع</a>
+    </nav>
+  </header>
+
+  <section class="hero" aria-labelledby="hero-title">
+    <svg class="scene" viewBox="0 0 1200 380" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--sky-top)"/>
+          <stop offset="1" style="stop-color:var(--sky-bottom)"/>
+        </linearGradient>
+        <linearGradient id="mix" gradientUnits="userSpaceOnUse" x1="800" y1="0" x2="560" y2="0">
+          <stop offset="0" style="stop-color:var(--nile-joined);stop-opacity:0"/>
+          <stop offset="1" style="stop-color:var(--nile-joined);stop-opacity:1"/>
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="380" fill="url(#sky)"/>
+      <circle class="sun" cx="1060" cy="92" r="46" style="fill:var(--sun-disc)"/>
+      <!-- dunes -->
+      <path d="M0 270 C180 220 330 240 470 262 C620 286 760 230 930 244 C1060 255 1140 238 1200 232 V380 H0Z" style="fill:var(--dune-far)"/>
+      <!-- Meroë pyramids (steep, with small chapels) -->
+      <g style="fill:var(--pyramid)">
+        <path d="M120 270 L158 150 L196 270Z"/><rect x="146" y="246" width="24" height="24"/>
+        <path d="M196 274 L226 184 L256 274Z"/><rect x="216" y="254" width="20" height="20"/>
+        <path d="M60 276 L84 206 L108 276Z"/>
+        <path d="M262 276 L282 218 L302 276Z"/>
+      </g>
+      <g style="fill:var(--pyramid-shade)">
+        <path d="M158 150 L196 270 L170 270Z"/><path d="M226 184 L256 274 L236 274Z"/>
+        <path d="M84 206 L108 276 L94 276Z"/><path d="M282 218 L302 276 L290 276Z"/>
+      </g>
+      <!-- palms -->
+      <g class="palms" style="stroke:var(--palm-dark)" stroke-linecap="round" fill="none">
+        <path d="M1010 300 C1006 260 1012 220 1020 190" stroke-width="9"/>
+        <g stroke-width="7"><path d="M1020 190 C990 180 970 188 955 205"/><path d="M1020 190 C1000 165 980 160 962 164"/>
+          <path d="M1020 190 C1030 160 1052 150 1072 154"/><path d="M1020 190 C1050 182 1072 192 1084 210"/><path d="M1020 190 C1022 168 1016 152 1006 140"/></g>
+        <path d="M1110 306 C1108 276 1114 246 1122 226" stroke-width="7"/>
+        <g stroke-width="5.5"><path d="M1122 226 C1100 218 1086 224 1074 236"/><path d="M1122 226 C1130 204 1148 198 1164 202"/>
+          <path d="M1122 226 C1144 222 1160 232 1170 246"/><path d="M1122 226 C1112 208 1100 202 1088 204"/></g>
+      </g>
+      <!-- the two Niles meeting (المقرن) -->
+      <path d="M1200 300 C1080 296 1000 312 880 316 C780 319 700 320 540 321" style="stroke:var(--blue-nile)" stroke-width="16" fill="none" stroke-linecap="butt"/>
+      <path d="M1200 346 C1080 344 980 338 880 336 C780 335 700 334 540 334" style="stroke:var(--white-nile)" stroke-width="15" fill="none" stroke-linecap="butt"/>
+      <path d="M800 327 C700 327 600 327 540 328 C460 331 340 340 240 344 C140 346 60 345 0 348" style="stroke:url(#mix)" stroke-width="31" fill="none" stroke-linecap="butt"/>
+      <!-- felucca -->
+      <g class="boat">
+        <path d="M400 330 h70 l-10 12 h-50z" style="fill:var(--ink)"/>
+        <path d="M436 330 V262" style="stroke:var(--ink)" stroke-width="3"/>
+        <path d="M438 266 L476 326 H438Z" style="fill:var(--sail)"/>
+      </g>
+      <path d="M0 360 C300 352 600 370 900 360 C1040 356 1140 362 1200 360 V380 H0Z" style="fill:var(--bank)"/>
+    </svg>
+
+    <div class="hero-text">
+      <p class="kicker">مساعد بالعامية السودانية · من الطلاب للطلاب</p>
+      <h1 id="hero-title">سوداشات — رفيقك في ألمانيا</h1>
+      <p class="lead">اسأل زي ما بتسأل صاحبك: الفيزا، الحساب المغلق، الإقامة، الجامعة، الشغل والسكن.
+        الإجابات مبنية على تجارب الطلاب السودانيين في ألمانيا.</p>
+      <a class="cta" href="#ask-section">ابدأ اسأل</a>
+    </div>
+  </section>
+
+  <svg class="band" aria-hidden="true"><rect width="100%" height="100%" fill="url(#nubian)"/></svg>
+
+  <main id="ask-section">
+    <section class="topics" aria-label="مواضيع شائعة">
+      <h2>شنو البشغلك؟</h2>
+      <div class="topic-grid" id="topics"></div>
+    </section>
+
+    <section class="chat-card" aria-label="المحادثة">
+      <div class="chat-head">
+        <div>
+          <strong>اسأل سوداشات</strong>
+          <span class="muted">إجابات قصيرة بالعامية، ومعاها تاريخ المعلومة</span>
+        </div>
+        <button id="new-chat" class="ghost" type="button">محادثة جديدة</button>
+      </div>
+      <div id="notice" class="notice" hidden></div>
+      <div id="chat" class="chat" aria-live="polite">
+        <div class="msg bot intro">أهلاً بيك يا زول 👋 أنا سوداشات. اسألني عن أي حاجة بتخص الدراسة والحياة في ألمانيا،
+          وحاجاوبك من تجارب الطلاب السودانيين هنا. اختار موضوع من فوق أو اكتب سؤالك.</div>
+      </div>
+      <div id="status" class="status" hidden></div>
+      <form id="ask" class="composer" autocomplete="off">
+        <textarea id="q" rows="1" maxlength="1000" placeholder="اكتب سؤالك هنا… مثلاً: الحساب المغلق بفتحو كيف؟" aria-label="سؤالك" required></textarea>
+        <button id="send" type="submit" aria-label="أرسل">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M20.6 3.4 3 12l17.6 8.6V14L8 12l12.6-2z"/></svg>
+        </button>
+      </form>
+      <p class="warn">⚠️ دي تجارب ناس، ما استشارة قانونية. اتأكد دايماً من الجهات الرسمية (السفارة، Ausländerbehörde، الجامعة).</p>
+    </section>
+  </main>
+
+  <section class="diversity" id="about" aria-labelledby="div-title">
+    <h2 id="div-title">من كل بقاع السودان… لكل طالب في ألمانيا</h2>
+    <p>الطلاب السودانيين في ألمانيا جايين من كل حتة: من الشمال والشرق، للغرب والوسط والجنوب،
+      بلغاتهم وثقافاتهم المختلفة. سوداشات اتعمل عشانهم كلهم — من تجارب أكتر من ٢٧٠٠ نقاش في قروب
+      «طلاب السودان في ألمانيا».</p>
+    <ul class="cities" aria-label="مدن من كل أقاليم السودان">
+      <li style="--c: var(--sun)">حلفا</li><li style="--c: var(--sun)">دنقلا</li><li style="--c: var(--sun)">مروي</li>
+      <li style="--c: var(--nile)">بورتسودان</li><li style="--c: var(--nile)">كسلا</li><li style="--c: var(--nile)">القضارف</li>
+      <li style="--c: var(--indigo)">الخرطوم</li><li style="--c: var(--indigo)">مدني</li><li style="--c: var(--indigo)">سنار</li>
+      <li style="--c: var(--clay)">الأبيض</li><li style="--c: var(--clay)">كادقلي</li><li style="--c: var(--clay)">الدلنج</li>
+      <li style="--c: var(--palm)">نيالا</li><li style="--c: var(--palm)">الفاشر</li><li style="--c: var(--palm)">الجنينة</li>
+      <li style="--c: var(--blue-nile)">الدمازين</li><li style="--c: var(--blue-nile)">كوستي</li><li style="--c: var(--blue-nile)">عطبرة</li>
+    </ul>
+    <div class="pillars">
+      <div><span aria-hidden="true">🔒</span><h3>خصوصيتك محفوظة</h3><p>كل الأسماء والأرقام والمعلومات الشخصية اتمسحت من الرسائل قبل ما تُستخدم.</p></div>
+      <div><span aria-hidden="true">📅</span><h3>معلومة بتاريخها</h3><p>القوانين والرسوم بتتغير، عشان كدا كل إجابة بتقول ليك المعلومة دي من ياتو فترة.</p></div>
+      <div><span aria-hidden="true">🤝</span><h3>من الناس للناس</h3><p>مشروع مجتمعي مفتوح المصدر. قيّم الإجابات بـ 👍 أو 👎 عشان يتحسن.</p></div>
+    </div>
+  </section>
+
+  <svg class="band" aria-hidden="true"><rect width="100%" height="100%" fill="url(#nubian)"/></svg>
+
+  <footer class="foot">
+    <p>صُنع بحب لطلاب السودان في ألمانيا 🤎 · <a id="src-link" href="#" target="_blank" rel="noopener">الكود المصدري</a></p>
+    <p class="muted">النموذج: ALLaM-7B (نسخة أولية) — النسخة الجاية مدرّبة على العامية السودانية.</p>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

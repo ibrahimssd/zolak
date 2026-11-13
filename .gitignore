@@ -1,0 +1,35 @@
+# --- PRIVATE DATA: never commit ---
+WhatsApp Chat*.txt
+*.txt.zip
+data
+data/
+*.jsonl
+*.faiss
+*.salt
+
+# models / checkpoints (symlinks to /temp storage)
+models
+checkpoints
+storage
+*.gguf
+*.safetensors
+*.bin
+
+# python
+__pycache__/
+*.pyc
+.venv*/
+venvs/
+.pytest_cache/
+*.egg-info/
+
+# llama-cpp-python wheel is published as a GitHub release asset, not committed
+space/wheels/
+space/feedback/
+
+# misc
+.env
+.DS_Store
+
+# private working notes (not published)
+PLAN.md

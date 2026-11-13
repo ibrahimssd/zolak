@@ -1,0 +1,6 @@
+# vLLM teacher environment (data distillation). Driver 550 / CUDA 12.4 -> vLLM 0.8.5 (torch 2.6.0+cu124).
+vllm==0.8.5.post1
+transformers==4.51.3
+tokenizers>=0.21,<0.22
+huggingface_hub>=0.30,<1.0
+sentencepiece==0.2.0  # 0.2.1+ needs protobuf>=5, but vllm 0.8.5 tracing deps pin protobuf<5

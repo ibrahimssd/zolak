@@ -1,0 +1,178 @@
+/* SudaChat — palette from Sudanese landscapes and Nubian wall paintings */
+:root {
+  --sand: #f4e7d3;
+  --paper: #fbf6ee;
+  --surface: #ffffff;
+  --ink: #2a1f1a;
+  --muted: #6e6058;
+  --line: #e7d9c6;
+  --clay: #b5532e;        /* terracotta / mud-brick */
+  --sun: #d99a1e;         /* saffron / mustard */
+  --nile: #1f5f8b;        /* deep Nile */
+  --palm: #2f6b3f;        /* palm green */
+  --indigo: #3b3270;      /* tobe indigo */
+  --blue-nile: #2b74a8;
+  --white-nile: #e6eef0;
+  --nile-joined: #5b93b8;
+  --accent: var(--clay);
+  --accent-ink: #ffffff;
+  --user: #f6e3d6;
+  --warn: #8a5a00;
+  /* hero scene */
+  --sky-top: #f7d48b; --sky-bottom: #ee9a5c; --sun-disc: #fff1c9;
+  --dune-far: #e6b77f; --pyramid: #a8552f; --pyramid-shade: #874122;
+  --palm-dark: #3d4a2a; --sail: #fff7e8; --bank: #c98b55; --glow: rgba(255, 236, 205, .75);
+  --radius: 18px;
+  --shadow: 0 10px 30px -12px rgba(60, 30, 10, .25);
+  --font: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --display: "Reem Kufi", var(--font);
+}
+/* night on the Nile */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sand: #2a221c; --paper: #15110e; --surface: #1f1915; --ink: #f3e9de; --muted: #bfae9f; --line: #3a2f27;
+    --clay: #d9774e; --sun: #e9b44c; --nile: #5aa4d6; --palm: #6fb07e; --indigo: #a59be6;
+    --blue-nile: #3f8cc4; --white-nile: #c9d6dc; --nile-joined: #5d8fb1;
+    --accent: #d9774e; --accent-ink: #1a120d; --user: #3a2a20; --warn: #f0c36b;
+    --sky-top: #141335; --sky-bottom: #4b2f4f; --sun-disc: #f3ead0;
+    --dune-far: #3c2c2a; --pyramid: #5c3324; --pyramid-shade: #45251a;
+    --palm-dark: #0f140c; --sail: #e8dcc8; --bank: #2b201b; --glow: rgba(20, 15, 40, .8);
+    --shadow: 0 10px 30px -12px rgba(0, 0, 0, .6);
+  }
+}
+:root[data-theme="dark"] {
+  --sand: #2a221c; --paper: #15110e; --surface: #1f1915; --ink: #f3e9de; --muted: #bfae9f; --line: #3a2f27;
+  --clay: #d9774e; --sun: #e9b44c; --nile: #5aa4d6; --palm: #6fb07e; --indigo: #a59be6;
+  --blue-nile: #3f8cc4; --white-nile: #c9d6dc; --nile-joined: #5d8fb1;
+  --accent: #d9774e; --accent-ink: #1a120d; --user: #3a2a20; --warn: #f0c36b;
+  --sky-top: #141335; --sky-bottom: #4b2f4f; --sun-disc: #f3ead0;
+  --dune-far: #3c2c2a; --pyramid: #5c3324; --pyramid-shade: #45251a;
+  --palm-dark: #0f140c; --sail: #e8dcc8; --bank: #2b201b; --glow: rgba(20, 15, 40, .8);
+  --shadow: 0 10px 30px -12px rgba(0, 0, 0, .6);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font);
+  font-size: 16px; line-height: 1.75; overflow-x: hidden;
+}
+a { color: var(--accent); }
+button { font-family: inherit; cursor: pointer; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.35; }
+.muted { color: var(--muted); }
+
+/* header */
+.top {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; background: color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); }
+.jebena { width: 34px; height: 34px; }
+.brand-name { font-family: var(--display); font-size: 1.35rem; font-weight: 700; }
+.top-links { display: flex; gap: 14px; }
+.top-links a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: .95rem; }
+.top-links a:hover { color: var(--accent); }
+
+/* hero */
+.hero { position: relative; min-height: 440px; display: grid; align-items: start; overflow: hidden; }
+.scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hero-text {
+  position: relative; max-width: 760px; margin: 0 auto; padding: 40px 16px 150px; text-align: center;
+}
+.kicker {
+  display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; font-size: .9rem;
+  background: color-mix(in srgb, var(--surface) 70%, transparent); color: var(--ink);
+}
+.hero h1 { font-size: clamp(1.9rem, 6vw, 3rem); margin: 6px 0 10px; color: var(--ink); }
+.hero h1, .lead { text-shadow: 0 0 18px var(--glow), 0 0 4px var(--glow); }
+.lead { font-size: clamp(1rem, 2.6vw, 1.15rem); margin: 0 auto 18px; max-width: 600px; color: var(--ink); }
+.cta {
+  display: inline-block; background: var(--accent); color: var(--accent-ink); text-decoration: none; font-weight: 600;
+  padding: 10px 26px; border-radius: 999px; box-shadow: var(--shadow);
+}
+.cta:hover { filter: brightness(1.07); }
+.boat { animation: drift 9s ease-in-out infinite alternate; }
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(-40px); } }
+@media (prefers-reduced-motion: reduce) { .boat, .cursor::after { animation: none !important; } html { scroll-behavior: auto; } }
+
+/* Nubian pattern band */
+.band { display: block; width: 100%; height: 28px; }
+
+/* main */
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 8px; }
+.topics h2, .diversity h2 { font-size: 1.4rem; margin: 0 0 12px; text-align: center; }
+.topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.topic {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px;
+  color: var(--ink); box-shadow: var(--shadow); border-top: 4px solid var(--c, var(--clay));
+  transition: transform .15s ease;
+}
+.topic:hover { transform: translateY(-2px); }
+.topic .ico { font-size: 1.4rem; }
+.topic strong { font-size: .98rem; }
+.topic small { color: var(--muted); font-size: .8rem; line-height: 1.5; }
+
+/* chat */
+.chat-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.chat-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px;
+  border-bottom: 1px solid var(--line); background: var(--sand);
+}
+.chat-head strong { display: block; font-family: var(--display); font-size: 1.1rem; }
+.chat-head .muted { font-size: .82rem; }
+.ghost { background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: .85rem; white-space: nowrap; }
+.notice { margin: 12px 16px 0; padding: 10px 12px; border-radius: 12px; background: var(--sand); border: 1px dashed var(--sun); font-size: .92rem; }
+.chat { display: flex; flex-direction: column; gap: 10px; padding: 16px; min-height: 260px; max-height: 62vh; overflow-y: auto; }
+.msg { max-width: 92%; padding: 10px 14px; border-radius: 16px; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-start; background: var(--user); border-start-start-radius: 4px; }
+.msg.bot { align-self: flex-end; background: var(--paper); border: 1px solid var(--line); border-start-end-radius: 4px; }
+.msg.bot ul { margin: 4px 0; padding-inline-start: 20px; }
+.msg .sources { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--muted); font-size: .82rem; }
+.msg .actions { display: flex; gap: 6px; margin-top: 6px; }
+.msg .actions button { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--muted); }
+.msg .actions button.chosen { border-color: var(--accent); color: var(--accent); }
+.msg.error { border-color: #c0392b; }
+.cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--accent); }
+@keyframes blink { 50% { opacity: 0; } }
+.status { padding: 0 16px 6px; color: var(--muted); font-size: .85rem; text-align: center; }
+.composer { display: flex; gap: 8px; align-items: flex-end; padding: 10px 12px; border-top: 1px solid var(--line); }
+textarea {
+  flex: 1; resize: none; max-height: 160px; font: inherit; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line); border-radius: 22px; padding: 10px 14px; outline: none;
+}
+textarea:focus { border-color: var(--accent); }
+#send { flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; }
+#send:disabled { opacity: .5; cursor: progress; }
+.warn { margin: 0; padding: 8px 16px 12px; color: var(--warn); font-size: .82rem; }
+
+/* diversity */
+.diversity { max-width: 860px; margin: 0 auto; padding: 28px 16px 32px; text-align: center; }
+.diversity > p { max-width: 680px; margin: 0 auto 16px; color: var(--muted); }
+.cities { list-style: none; padding: 0; margin: 0 auto 24px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 720px; }
+.cities li {
+  padding: 4px 12px 4px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line);
+  font-size: .9rem; display: inline-flex; align-items: center; gap: 6px;
+}
+.cities li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; text-align: start; }
+.pillars > div { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.pillars span { font-size: 1.5rem; }
+.pillars h3 { margin: 4px 0; font-size: 1.05rem; }
+.pillars p { margin: 0; color: var(--muted); font-size: .9rem; }
+
+/* footer */
+.foot { text-align: center; padding: 14px 16px 22px; font-size: .88rem; }
+.foot p { margin: 4px 0; }
+
+@media (max-width: 520px) {
+  .top-links { gap: 10px; }
+  .hero { min-height: 400px; }
+  .hero-text { padding: 28px 16px 130px; }
+  .chat { max-height: 58vh; }
+}
