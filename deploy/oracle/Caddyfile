@@ -1,7 +1,0 @@
-{$ZOLAK_DOMAIN} {
-	encode gzip
-	reverse_proxy zolak:7860 {
-		# stream answers token by token (server-sent events)
-		flush_interval -1
-	}
-}

@@ -2,10 +2,11 @@
 
 dense : BAAI/bge-m3 embeddings, FAISS inner-product (cosine; vectors are normalized)
 sparse: BM25 over Arabic-normalized tokens (catches German terms: Sperrkonto, Anmeldung, ...)
-fusion: reciprocal-rank fusion (RRF)
+fusion: reciprocal-rank fusion (RRF) of question similarity (weight 2), record similarity and BM25
 
 Index directory layout (built by src/rag/build_index.py):
-    kb.faiss         dense index (row i == line i of kb.jsonl)
+    kb.faiss         dense index of whole records (row i == line i of kb.jsonl)
+    kb_q.faiss       dense index of the records' questions only (optional)
     kb.jsonl         the knowledge-base records
     config.json      {"embed_model": ..., "dim": ...}
 """
@@ -107,15 +108,3 @@ class HybridRetriever:
             sim.update({i: float(v @ qv[0]) for i, v in zip(missing, vecs)})
         return [Hit(self.records[i], fused[i], dense.index(i) if i in dense else None,
                     sparse.index(i) if i in sparse else None, sim[i]) for i in top]
-
-    def best_of_source(self, query: str, source: str, min_sim: float = 0.70, pool: int = 80) -> Hit | None:
-        """Best record of one source by question similarity. Keeps official answers visible even when many
-        group records about the same topic crowd the fused ranking."""
-        if self.qindex is None:
-            return None
-        qv = self.embed([query])
-        scores, idx = self.qindex.search(qv, min(pool, len(self.records)))
-        for s, i in zip(scores[0], idx[0]):
-            if i >= 0 and self.records[int(i)].get("source") == source:
-                return Hit(self.records[int(i)], float(s), None, None, float(s)) if s >= min_sim else None
-        return None

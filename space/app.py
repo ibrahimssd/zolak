@@ -58,7 +58,6 @@ from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 
 from prompts import build_messages
 from retriever import HybridRetriever
-from websearch import search_official
 
 TOKEN = os.environ.get("HF_TOKEN")
 # BACKEND: "zerogpu" = full-precision model with PyTorch on Hugging Face ZeroGPU (included in PRO, quota-based)
@@ -76,16 +75,37 @@ try:  # torch's own pools (intra-op and inter-op) follow the same limit
     torch.set_num_interop_threads(1)
 except (ImportError, RuntimeError):
     pass
-# MIN_SIM calibrated on the raw-thread KB: relevant top hits 0.52-0.72, off-topic mostly 0.34-0.51
-TOP_K, MIN_SIM, MAX_TOKENS, HISTORY_TURNS = 2, 0.55, 220, 2
-WEB_SEARCH = os.environ.get("WEB_SEARCH", "1") == "1"
+# Always the 2 most relevant group entries (no similarity cut-off): the model answers ONLY from them and says so
+# when they don't cover the question.
+TOP_K, MAX_TOKENS, HISTORY_TURNS = 2, 220, 2
 SOURCES_SEP = "\n\n---\n"
+# greetings / thanks: no retrieval, so the reply doesn't quote unrelated group entries
+SMALLTALK_RE = re.compile(
+    r"^(?:(?:ال)?سلام(?: عليكم)?(?: ورحمة الله(?: وبركاته)?)?|مرحب[اًا]?|هلا|اهلين|أهلين|اهلا|أهلا|كيفك|كيف الحال|"
+    r"صباح الخير|مساء الخير|شكرا(?: جزيلا)?|شكراً|مشكور|تسلم|يسلمو|الله يديك العافية|hi|hello|hey|thanks?|thank you|"
+    r"ok|okay|تمام|طيب|اوكي)[\s!.،؟?🙏❤️👍😊]*$", re.IGNORECASE)
 
 # ---------------------------------------------------------------- load
 t0 = time.time()
 index_dir = os.environ.get("LOCAL_INDEX") or str(
     Path(snapshot_download(DATA_REPO, repo_type="dataset", allow_patterns=["index/*"], token=TOKEN)) / "index")
 retriever = HybridRetriever(index_dir)   # embedder stays on CPU: GPU quota is spent only on generation
+# group record id -> the summary of its question cluster (summaries consolidate several discussions)
+SUMMARY_OF = {m: r for r in retriever.records if r.get("source") == "summary" for m in r.get("members", [])}
+
+
+def retrieve(question: str, k: int = TOP_K) -> list[dict]:
+    """Top-k group entries, no similarity cut-off. A hit that belongs to a summarized cluster is replaced by
+    that cluster's summary; duplicates collapse so the k entries cover different discussions."""
+    out, seen = [], set()
+    for h in retriever.search(question, k=4 * k):
+        rec = SUMMARY_OF.get(h.rec["id"], h.rec)
+        if rec["id"] not in seen:
+            seen.add(rec["id"])
+            out.append(rec)
+            if len(out) == k:
+                break
+    return out
 
 if BACKEND == "zerogpu":
     from threading import Thread
@@ -163,20 +183,23 @@ def _clean_history(history: list | None) -> list[dict]:
     return msgs
 
 
-def _sources_line(recs: list[dict]) -> str:
+# the model's refusal opening ("للأسف ما لقيت نقاش في القروب ...")
+NOT_FOUND_RE = re.compile(r"^\W*(?:للأسف|معليش|والله)?[،,!\s]*ما (?:لقيت|لقينا|في) (?:أي )?(?:نقاش|تجارب|معلومات?)")
+
+
+def _sources_line(recs: list[dict], answer_text: str = "") -> str:
     if not recs:
-        return "ℹ️ ما لقيت معلومة في القروب ولا في المواقع الرسمية — اتأكد من الجهات الرسمية."
-    group = [r for r in recs if r.get("source") not in ("official", "web")]
-    official = [r for r in recs if r.get("source") == "official"]
-    web = [r for r in recs if r.get("source") == "web"]
+        return ""
+    if NOT_FOUND_RE.match(answer_text.strip()):   # the model said the group never discussed it
+        return "ℹ️ ما لقيت نقاش في القروب عن السؤال دا."
     parts = []
-    if group:
-        parts.append("📅 من تجارب أعضاء القروب (" + "، ".join(sorted({r["date"][:7] for r in group}, reverse=True)) + ")")
-    if official:
-        parts.append("🌐 من موقع رسمي: " + "، ".join(sorted({r["site"] for r in official})))
-    if web:
-        parts.append("🔎 من بحث في مواقع رسمية: " + "، ".join(sorted({r["site"] for r in web})))
-    return " · ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
+    for r in recs:
+        if r.get("source") == "summary":
+            a, b, n = r["date_from"][:7], r["date"][:7], r["n_discussions"]
+            parts.append(("ملخص نقاشين" if n == 2 else f"ملخص {n} نقاشات") + (f" ({b})" if a == b else f" ({a} → {b})"))
+        else:
+            parts.append(f"نقاش {r['date'][:7]}")
+    return "📅 من القروب: " + "، ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
 
 
 def answer(question: str, history: list | None = None):
@@ -184,67 +207,26 @@ def answer(question: str, history: list | None = None):
     if not question:
         yield "اكتب سؤالك 🙂"
         return
-    hist = _clean_history(history)
-    # context: best 2 records overall + the best official record when its question matches closely
-    recs = [h.rec for h in retriever.search(question, k=TOP_K) if h.dense_sim >= MIN_SIM]
-    off = retriever.best_of_source(question, "official")
-    if off and off.rec not in recs:
-        recs.append(off.rec)
-    if not recs and WEB_SEARCH:  # neither the group nor the crawled official pages: search official sites live
-        recs = search_official(question, retriever.embed)
-
-    web_tried = any(r.get("source") == "web" for r in recs)
-    while True:
-        msgs = build_messages(question, recs, hist)
-        text, checked, switch = "", False, None
+    recs = [] if SMALLTALK_RE.match(question) else retrieve(question)
+    print(f"retrieved: {[r['id'] for r in recs]}", flush=True)
+    msgs = build_messages(question, recs, _clean_history(history))
+    text = ""
+    for attempt in (1, 2):
         try:
-            for piece in _generate_with_retry(msgs):
+            for piece in generate(msgs):
                 text += piece
-                if not checked:
-                    if len(text) < 40:
-                        continue
-                    checked = True
-                    # the model says the context does not answer the question -> try official sites live
-                    if WEB_SEARCH and not web_tried and REFUSAL_RE.match(text.strip()):
-                        web_tried = True
-                        switch = search_official(question, retriever.embed)
-                        if switch:
-                            break
                 yield text
-        except GpuBusy:
+            break
+        except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
+            print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
+            transient = "quota" not in str(e).lower() and not text
+            if attempt == 1 and transient:
+                time.sleep(2)
+                continue
             # every final message ends with SOURCES_SEP so the web page knows the answer is complete
             yield (text + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
             return
-        if switch:
-            recs = switch
-            continue
-        yield text.strip() + SOURCES_SEP + _sources_line(recs)
-        return
-
-
-class GpuBusy(Exception):
-    pass
-
-
-# the model's trained "not found" openings (src/train/make_sft_data.py IRRELEVANT / NOCONTEXT)
-REFUSAL_RE = re.compile(r"^(للأسف ما لقيت|المعلومات اللي عندي ما بتجاوب|ما لقيت معلومة|السؤال دا ما لقيت)")
-
-
-def _generate_with_retry(msgs: list[dict]):
-    """Yield text pieces; retry once on a transient GPU error before any text; GpuBusy when out of quota."""
-    for attempt in (1, 2):
-        produced = False
-        try:
-            for piece in generate(msgs):
-                produced = True
-                yield piece
-            return
-        except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
-            print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
-            if attempt == 1 and not produced and "quota" not in str(e).lower():
-                time.sleep(2)
-                continue
-            raise GpuBusy(str(e)) from e
+    yield text.strip() + SOURCES_SEP + _sources_line(recs, text)
 
 
 def feedback(question: str, answer_text: str, rating: str) -> str:

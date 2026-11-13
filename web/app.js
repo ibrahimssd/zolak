@@ -9,7 +9,7 @@ const CONFIG = {
 const SOURCES_SEP = "\n\n---\n";
 const TOPICS = [
   { ico: "✈️", title: "الفيزا والسفارة", hint: "مواعيد، موافقة أمنية، أوراق", q: "الموافقة الأمنية للفيزا بتاخد قدر شنو؟", c: "var(--nile)" },
-  { ico: "🏦", title: "الحساب المغلق", hint: "Sperrkonto، تحويل القروش", q: "الحساب المغلق Sperrkonto بفتحو كيف؟", c: "var(--sun)" },
+  { ico: "🏦", title: "الحساب المغلق", hint: "Sperrkonto، تحويل القروش", q: "ممكن أحول مبلغ الحساب المغلق Sperrkonto على دفعات؟", c: "var(--sun)" },
   { ico: "🪪", title: "الإقامة", hint: "Ausländerbehörde، تجديد، Fiktion", q: "كيف أجدد الإقامة في Ausländerbehörde وشنو الأوراق المطلوبة؟", c: "var(--indigo)" },
   { ico: "🎓", title: "الجامعة والقبول", hint: "uni-assist، ماستر، معادلة", q: "كيف أقدم ماستر في ألمانيا عن طريق uni-assist؟", c: "var(--palm)" },
   { ico: "💼", title: "الشغل", hint: "Werkstudent، Minijob، Ausbildung", q: "ممكن اشتغل وانا طالب؟ كم ساعة مسموح؟", c: "var(--clay)" },

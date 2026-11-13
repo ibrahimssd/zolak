@@ -21,7 +21,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "space"))
-from prompts import NOT_IN_GROUP, build_messages  # noqa: E402
+from prompts import build_messages  # noqa: E402
 
 MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
 
@@ -52,25 +52,14 @@ CHECK_SUFFIX = [
     " وأحسن تتأكد من {auth} لأنو القوانين والرسوم بتتغير.",
 ]
 IRRELEVANT = [
-    "المعلومات اللي عندي ما بتجاوب سؤالك دا بالضبط، لا من القروب ولا من المواقع الرسمية، وما داير أألف ليك حاجة. "
+    "المعلومات اللي عندي من تجارب القروب ما بتجاوب سؤالك دا بالضبط، وما داير أألف ليك حاجة. "
     "أحسن تسأل في القروب أو تتأكد من {auth}.",
-    "للأسف ما لقيت معلومة مؤكدة عن النقطة دي بالذات، لا في القروب ولا في المواقع الرسمية. عشان ما أديك معلومة "
-    "غلط، اتواصل مع {auth}، وممكن تسأل الناس في القروب برضو.",
+    "للأسف ما لقيت تجارب في القروب عن النقطة دي بالذات. عشان ما أديك معلومة غلط، اتواصل مع {auth}، "
+    "وممكن تسأل الناس في القروب برضو.",
 ]
 NOCONTEXT = [
-    "ما لقيت معلومة عن السؤال دا لا في القروب ولا في المواقع الرسمية. أحسن حاجة تسأل {auth} مباشرة، أو تطرح "
-    "السؤال في القروب.",
-    "السؤال دا ما لقيت ليهو معلومة مؤكدة، لا من تجارب القروب ولا من المواقع الرسمية. اتأكد من {auth} عشان تاخد "
-    "الإجابة الصاح.",
-]
-# Answers that come from an official site or a web search start by saying clearly that the group had no answer.
-OFFICIAL_LEAD = [
-    NOT_IN_GROUP + " 🙂 حسب الموقع الرسمي {site}: {answer}",
-    NOT_IN_GROUP + ". لقيت في الموقع الرسمي {site}: {answer}",
-]
-WEB_LEAD = [
-    NOT_IN_GROUP + " 🙂 لقيت في موقع {site}: {answer}",
-    NOT_IN_GROUP + ". حسب موقع {site} على الإنترنت: {answer}",
+    "ما عندي تجارب من القروب عن السؤال دا. أحسن حاجة تسأل {auth} مباشرة، أو تطرح السؤال في القروب.",
+    "السؤال دا ما لقيت ليهو معلومة مؤكدة في تجارب القروب. اتأكد من {auth} عشان تاخد الإجابة الصاح.",
 ]
 SMALLTALK = [
     ("السلام عليكم", "وعليكم السلام ورحمة الله، أهلاً بيك يا زول! أنا زولك، اسألني عن أي حاجة بتخص الدراسة "
@@ -103,19 +92,6 @@ def grounded_target(rec: dict, rnd: random.Random) -> str:
     return text
 
 
-def sourced_target(rec: dict, leads: list[str], rnd: random.Random) -> str:
-    text = rnd.choice(leads).format(site=rec["site"], answer=rec["answer"].rstrip())
-    if rec.get("time_sensitive") and rnd.random() < 0.5:
-        text += rnd.choice(CHECK_SUFFIX).format(auth=AUTHORITY.get(rec["topic"], DEFAULT_AUTHORITY))
-    return text + f" الرابط: {rec['links'][0]}"
-
-
-def web_record(rec: dict, chunk: dict) -> dict:
-    """The raw page section (English/German) as a live web search would return it."""
-    return {"source": "web", "site": rec["site"], "date": rec["date"], "question": chunk["title"],
-            "answer": chunk["text"], "facts": [], "links": rec["links"]}
-
-
 def example(question: str, context: list[dict], target: str, kind: str) -> dict:
     msgs = build_messages(question, context)
     return {"prompt": msgs, "completion": [{"role": "assistant", "content": target}], "kind": kind}
@@ -128,8 +104,6 @@ def main() -> None:
     ap.add_argument("--nocontext", type=float, default=0.10)
     ap.add_argument("--val", type=float, default=0.05)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--official", default="data/official/kb_official.jsonl")
-    ap.add_argument("--chunks", default="data/official/chunks.jsonl")
     args = ap.parse_args()
 
     rnd = random.Random(args.seed)
@@ -139,18 +113,9 @@ def main() -> None:
     for r in qa:
         by_topic.setdefault(r["topic"], []).append(r)
 
-    official, chunks = [], {}
-    off_path = Path(args.official)
-    if off_path.exists():
-        official = [json.loads(l) for l in off_path.open(encoding="utf-8")]
-        chunks = {json.loads(l)["chunk_id"]: json.loads(l) for l in Path(args.chunks).open(encoding="utf-8")}
-
     rnd.shuffle(qa)
-    rnd.shuffle(official)
     n_val = max(20, int(len(qa) * args.val))
-    n_val_off = int(len(official) * args.val)
     splits = {"val": qa[:n_val], "train": qa[n_val:]}
-    off_splits = {"val": official[:n_val_off], "train": official[n_val_off:]}
     counts: Counter = Counter()
     for split, items in splits.items():
         rows = []
@@ -167,15 +132,6 @@ def main() -> None:
                                     rnd.choice(IRRELEVANT).format(auth=auth), "irrelevant"))
             elif rnd.random() < args.nocontext / (1 - args.irrelevant):
                 rows.append(example(rec["question"], [], rnd.choice(NOCONTEXT).format(auth=auth), "nocontext"))
-        for rec in off_splits[split]:
-            ctx = [rec]
-            if rnd.random() < 0.4:   # sometimes next to an unrelated group record
-                ctx.append(rnd.choice(qa))
-                rnd.shuffle(ctx)
-            rows.append(example(rec["question"], ctx, sourced_target(rec, OFFICIAL_LEAD, rnd), "official"))
-            if rec.get("chunk_id") in chunks and rnd.random() < 0.5:
-                rows.append(example(rec["question"], [web_record(rec, chunks[rec["chunk_id"]])],
-                                    sourced_target(rec, WEB_LEAD, rnd), "web"))
         if split == "train":
             for _ in range(5):  # small talk, a few repetitions
                 for q, a in SMALLTALK:
