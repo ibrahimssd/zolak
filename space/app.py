@@ -105,6 +105,25 @@ if BACKEND == "zerogpu":
                       do_sample=True, temperature=0.3, top_p=0.9, repetition_penalty=1.05)
         Thread(target=hf_model.generate, kwargs=kwargs).start()
         yield from streamer
+elif BACKEND == "remote":
+    # Generation runs in the private ZeroGPU worker Space (space_gpu/). Calling it with the owner's token makes
+    # GPU time count against the owner's PRO quota instead of each anonymous visitor's tiny quota.
+    from gradio_client import Client
+
+    GPU_SPACE = os.environ.get("GPU_SPACE", "ibrahimssd11/zolak-gpu")
+    _gpu = {"client": None}
+
+    def _gpu_client():
+        if _gpu["client"] is None:
+            _gpu["client"] = Client(GPU_SPACE, hf_token=TOKEN, verbose=False)
+        return _gpu["client"]
+
+    def generate(msgs: list[dict]):
+        prev = ""
+        for out in _gpu_client().submit(json.dumps(msgs, ensure_ascii=False), api_name="/generate"):
+            if out and len(out) > len(prev):
+                yield out[len(prev):]
+                prev = out
 else:
     from llama_cpp import Llama
 
@@ -212,7 +231,7 @@ with gr.Blocks(title="Zolak", theme=gr.themes.Soft()) as demo:
     q_in.submit(answer, [q_in, h_in], a_out, api_name="ask")
     fr.submit(feedback, [fq, fa, fr], f_out, api_name="feedback")
 
-demo.queue(default_concurrency_limit=1, max_size=40)
+demo.queue(default_concurrency_limit=4 if BACKEND == "remote" else 1, max_size=40)
 
 if __name__ == "__main__":
     # CORS: Gradio echoes the caller's origin whenever the server's own host name is not localhost, so the GitHub

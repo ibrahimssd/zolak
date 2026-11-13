@@ -29,13 +29,14 @@ STORAGE = Path(os.environ.get("ZOLAK_STORAGE", f"/temp/{os.environ.get('USER', '
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--step", choices=["model", "data", "space", "all"], required=True)
+    ap.add_argument("--step", choices=["model", "data", "space", "gpu", "all"], required=True)
     ap.add_argument("--model-file", default=str(STORAGE / "models/gguf/zolak-allam-v2-Q4_K_M.gguf"))
     ap.add_argument("--index-dir", default=str(ROOT / "data/index"))
     ap.add_argument("--space-name", default="zolak")
     ap.add_argument("--wheel-url", default="", help="public URL of the llama-cpp-python wheel (GitHub release)")
-    ap.add_argument("--backend", choices=["zerogpu", "llamacpp"], default="zerogpu",
-                    help="zerogpu = PRO ZeroGPU (PyTorch, fast); llamacpp = 4-bit GGUF on free CPU")
+    ap.add_argument("--backend", choices=["remote", "zerogpu", "llamacpp"], default="remote",
+                    help="remote = public CPU gateway + private ZeroGPU worker on the owner's PRO quota (default); "
+                         "zerogpu = one ZeroGPU Space (visitors' own anonymous quota); llamacpp = 4-bit GGUF on CPU")
     ap.add_argument("--model-subdir", default="zolak-allam-v2", help="safetensors folder in the model repo (zerogpu)")
     args = ap.parse_args()
 
@@ -46,7 +47,8 @@ def main() -> None:
     user = api.whoami()["name"]
     model_repo, data_repo, fb_repo = f"{user}/zolak-models", f"{user}/zolak-data", f"{user}/zolak-feedback"
     space_repo = f"{user}/{args.space_name}"
-    steps = {"model", "data", "space"} if args.step == "all" else {args.step}
+    steps = {"model", "data", "gpu", "space"} if args.step == "all" else {args.step}
+    gpu_repo = f"{user}/{args.space_name}-gpu"
 
     if "model" in steps:
         api.create_repo(model_repo, repo_type="model", private=True, exist_ok=True)
@@ -64,9 +66,22 @@ def main() -> None:
         api.upload_folder(folder_path=args.index_dir, path_in_repo="index", repo_id=data_repo, repo_type="dataset",
                           allow_patterns=["kb.faiss", "kb.jsonl", "config.json"])
 
+    if "gpu" in steps:
+        # PRIVATE ZeroGPU worker: only the owner's token can call it, so GPU time uses the owner's PRO quota.
+        api.create_repo(gpu_repo, repo_type="space", space_sdk="gradio", private=True, exist_ok=True)
+        api.add_space_secret(gpu_repo, "HF_TOKEN", token)
+        for k, v in {"MODEL_REPO": model_repo, "MODEL_SUBDIR": args.model_subdir}.items():
+            api.add_space_variable(gpu_repo, k, v)
+        api.upload_folder(folder_path=str(ROOT / "space_gpu"), repo_id=gpu_repo, repo_type="space",
+                          ignore_patterns=["__pycache__/*"])
+        api.request_space_hardware(gpu_repo, "zero-a10g")   # included in PRO (quota-based, never billed per use)
+        print(f"GPU worker: https://huggingface.co/spaces/{gpu_repo} (private, zero-a10g)")
+
     if "space" in steps:
         if args.backend == "zerogpu":
             req = (ROOT / "space/requirements-zerogpu.txt").read_text()
+        elif args.backend == "remote":
+            req = (ROOT / "space/requirements-remote.txt").read_text()
         else:
             req = (ROOT / "space/requirements.txt").read_text()
             if "__WHEEL_URL__" in req:
@@ -78,6 +93,7 @@ def main() -> None:
         api.add_space_secret(space_repo, "HF_TOKEN", token)
         for k, v in {"BACKEND": args.backend, "MODEL_REPO": model_repo, "MODEL_FILE": Path(args.model_file).name,
                      "MODEL_SUBDIR": args.model_subdir, "DATA_REPO": data_repo, "FEEDBACK_REPO": fb_repo,
+                     "GPU_SPACE": gpu_repo,
                      "N_THREADS": "2"}.items():  # cpu-basic = 2 vCPU quota; more threads stall llama.cpp
             api.add_space_variable(space_repo, k, v)
         api.upload_folder(folder_path=str(ROOT / "space"), repo_id=space_repo, repo_type="space",
@@ -85,7 +101,7 @@ def main() -> None:
         api.upload_file(path_or_fileobj=req.encode(), path_in_repo="requirements.txt", repo_id=space_repo,
                         repo_type="space")
         # Only hardware included in the flat PRO plan: ZeroGPU (quota-based) or the free cpu-basic. Never paid tiers.
-        hw = "zero-a10g" if args.backend == "zerogpu" else "cpu-basic"
+        hw = "zero-a10g" if args.backend == "zerogpu" else "cpu-basic"   # remote gateway runs on free cpu-basic
         api.request_space_hardware(space_repo, hw)
         print("hardware:", hw)
         print(f"Space: https://huggingface.co/spaces/{space_repo}  (API: {space_repo})")
