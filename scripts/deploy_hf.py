@@ -1,10 +1,10 @@
 """Deploy to Hugging Face (run on this server after `hf auth login` with a WRITE token).
 
 Creates (if missing) and uploads:
-  <user>/sudachat-models     PRIVATE model repo   <- GGUF model file
-  <user>/sudachat-data       PRIVATE dataset      <- index/ (kb.faiss, kb.jsonl, config.json)
-  <user>/sudachat-feedback   PRIVATE dataset      <- written by the Space (👍/👎)
-  <user>/sudachat            PUBLIC Gradio Space  <- space/ (code only), with secret HF_TOKEN + variables
+  <user>/zolna-models     PRIVATE model repo   <- GGUF model file
+  <user>/zolna-data       PRIVATE dataset      <- index/ (kb.faiss, kb.jsonl, config.json)
+  <user>/zolna-feedback   PRIVATE dataset      <- written by the Space (👍/👎)
+  <user>/zolna            PUBLIC Gradio Space  <- space/ (code only), with secret HF_TOKEN + variables
 
 Usage:
   source scripts/env.sh
@@ -24,7 +24,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, get_token
 
 ROOT = Path(__file__).resolve().parents[1]
-STORAGE = Path(os.environ.get("SUDACHAT_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/sudaChat"))
+STORAGE = Path(os.environ.get("ZOLNA_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/zolna"))
 
 
 def main() -> None:
@@ -32,7 +32,7 @@ def main() -> None:
     ap.add_argument("--step", choices=["model", "data", "space", "all"], required=True)
     ap.add_argument("--model-file", default=str(STORAGE / "models/gguf/ALLaM-7B-Instruct-preview-Q4_K_M.gguf"))
     ap.add_argument("--index-dir", default=str(ROOT / "data/index"))
-    ap.add_argument("--space-name", default="sudachat")
+    ap.add_argument("--space-name", default="zolna")
     ap.add_argument("--wheel-url", default="", help="public URL of the llama-cpp-python wheel (GitHub release)")
     args = ap.parse_args()
 
@@ -41,7 +41,7 @@ def main() -> None:
         sys.exit("Not logged in: run `hf auth login` with a WRITE token first.")
     api = HfApi(token=token)
     user = api.whoami()["name"]
-    model_repo, data_repo, fb_repo = f"{user}/sudachat-models", f"{user}/sudachat-data", f"{user}/sudachat-feedback"
+    model_repo, data_repo, fb_repo = f"{user}/zolna-models", f"{user}/zolna-data", f"{user}/zolna-feedback"
     space_repo = f"{user}/{args.space_name}"
     steps = {"model", "data", "space"} if args.step == "all" else {args.step}
 

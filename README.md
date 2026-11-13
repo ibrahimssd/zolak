@@ -1,4 +1,4 @@
-# سوداشات — SudaChat
+# زولنا — Zolna
 
 A free chatbot that answers questions from Sudanese students and newcomers in Germany **in Sudanese Arabic**.
 It covers visas, blocked accounts (Sperrkonto), residence permits, university admission, jobs, housing and more.

@@ -5,7 +5,7 @@ and Arabizi/English/German-mixed. Output: data/processed/eval_paraphrases.jsonl 
 
 Usage:
     source scripts/env.sh
-    CUDA_VISIBLE_DEVICES=0,1,2,3 $SUDACHAT_VENVS/vllm/bin/python -m src.ingest.paraphrase_eval
+    CUDA_VISIBLE_DEVICES=0,1,2,3 $ZOLNA_VENVS/vllm/bin/python -m src.ingest.paraphrase_eval
 """
 from __future__ import annotations
 

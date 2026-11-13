@@ -1,5 +1,5 @@
 ---
-title: SudaChat
+title: Zolna
 emoji: 🇸🇩
 colorFrom: green
 colorTo: yellow
@@ -12,7 +12,7 @@ license: apache-2.0
 short_description: Sudanese-dialect helper for Sudanese students in Germany
 ---
 
-# سوداشات — SudaChat
+# زولنا — Zolna
 
 Answers questions from Sudanese students and newcomers in Germany, in Sudanese dialect, grounded in the
 anonymized experience of the community group "طلاب السودان في ألمانيا".

@@ -1,10 +1,10 @@
-// SudaChat front-end (GitHub Pages) -> chatbot backend (Gradio app) via @gradio/client.
+// Zolna front-end (GitHub Pages) -> chatbot backend (Gradio app) via @gradio/client.
 import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client@1.19.1/dist/index.min.js";
 
 const CONFIG = {
   // Gradio backend: a Hugging Face Space id ("user/space") or a full https URL. Empty = not deployed yet.
   backend: "",
-  repo: "https://github.com/ibrahimssd/sudachat",
+  repo: "https://github.com/ibrahimssd/zolna",
 };
 const SOURCES_SEP = "\n\n---\n";
 const TOPICS = [
@@ -77,7 +77,7 @@ function addFeedback(el, question, answer) {
 }
 
 // ---------- backend connection (free backends sleep when idle)
-const NOT_READY = "🚧 سوداشات لسه في مرحلة التجهيز وقريب حيكون جاهز للأسئلة. ارجع لينا بعد شوية 🙏";
+const NOT_READY = "🚧 زولنا لسه في مرحلة التجهيز وقريب حيكون جاهز للأسئلة. ارجع لينا بعد شوية 🙏";
 async function connect() {
   if (client) return client;
   if (!CONFIG.backend) throw new Error("not-deployed");

@@ -1,8 +1,8 @@
-"""SudaChat — Hugging Face Space (free CPU): hybrid retrieval over the community KB + llama.cpp generation.
+"""Zolna — Hugging Face Space (free CPU): hybrid retrieval over the community KB + llama.cpp generation.
 
 Environment (Space settings → Variables and secrets):
   HF_TOKEN        secret; read private model/dataset, write feedback
-  MODEL_REPO      private model repo holding the GGUF            (e.g. <user>/sudachat-models)
+  MODEL_REPO      private model repo holding the GGUF            (e.g. <user>/zolna-models)
   MODEL_FILE      GGUF file name                                 (default ALLaM-7B-Instruct-preview-Q4_K_M.gguf)
   DATA_REPO       private dataset repo with index/{kb.faiss,kb.jsonl,config.json}
   FEEDBACK_REPO   private dataset repo for 👍/👎 feedback (optional)
@@ -113,11 +113,11 @@ EXAMPLES = [
     "جوازي السوداني قرب يخلص وانا في ألمانيا، اجدده وين؟",
     "ممكن اشتغل وانا طالب؟ كم ساعة مسموح؟",
 ]
-HEADER = """## سوداشات 🇸🇩 — مساعد الطلاب السودانيين في ألمانيا
+HEADER = """## زولنا 🇸🇩 — مساعد الطلاب السودانيين في ألمانيا
 بيجاوب من تجارب أعضاء قروب «طلاب السودان في ألمانيا» (بعد حذف أي معلومات شخصية).
 ⚠️ دي تجارب ناس ما استشارة قانونية — اتأكد دايماً من الجهات الرسمية."""
 
-with gr.Blocks(title="SudaChat", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="Zolna", theme=gr.themes.Soft()) as demo:
     gr.Markdown(HEADER, rtl=True)
     gr.ChatInterface(
         fn=answer, type="messages", examples=EXAMPLES, cache_examples=False,

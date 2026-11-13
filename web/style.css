@@ -1,4 +1,4 @@
-/* SudaChat — palette from Sudanese landscapes and Nubian wall paintings */
+/* Zolna — palette from Sudanese landscapes and Nubian wall paintings */
 :root {
   --sand: #f4e7d3;
   --paper: #fbf6ee;
@@ -71,6 +71,7 @@ h1, h2, h3 { font-family: var(--display); line-height: 1.35; }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); }
 .jebena { width: 34px; height: 34px; }
 .brand-name { font-family: var(--display); font-size: 1.35rem; font-weight: 700; }
+.brand-latin { font-size: .8rem; color: var(--muted); letter-spacing: .04em; margin-inline-start: 2px; }
 .top-links { display: flex; gap: 14px; }
 .top-links a { color: var(--ink); text-decoration: none; font-weight: 500; font-size: .95rem; }
 .top-links a:hover { color: var(--accent); }
