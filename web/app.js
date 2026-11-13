@@ -108,22 +108,34 @@ async function ask(question) {
   const botEl = addMessage("bot");
   botEl.classList.add("cursor");
   let full = "";
+  // Watchdog: never leave the input disabled if a reply stalls.
+  const watchdog = setTimeout(() => {
+    busy = false; send.disabled = false; setStatus("");
+    botEl.classList.remove("cursor");
+    if (!full) botEl.textContent = "معليش، الرد اتأخر شديد. جرب تاني بعد شوية.";
+  }, 150000);
   try {
     const c = await connect();
     const job = c.submit("/ask", [question, history.slice(-4)]);
+    // The job's message stream stays open after the last answer, so stop on "complete" (or on the final chunk,
+    // which carries the sources line) instead of waiting for the stream to end.
     for await (const msg of job) {
       if (msg.type === "status") {
         if (msg.stage === "pending" && typeof msg.position === "number" && msg.position > 0) {
           setStatus(`في ${msg.position} قبلك في الصف… لحظة`);
         } else if (msg.stage === "error") {
           throw new Error(msg.message || "error");
+        } else if (msg.stage === "complete") {
+          break;
         } else { setStatus(""); }
       } else if (msg.type === "data") {
         full = String(msg.data?.[0] ?? "");
         fillBot(botEl, full, false);
         scrollChat();
+        if (full.includes(SOURCES_SEP)) break;   // final chunk
       }
     }
+    try { job.cancel?.(); } catch (_) { /* stream already closed */ }
     fillBot(botEl, full, true);
     const answer = full.split(SOURCES_SEP)[0];
     history.push({ role: "user", content: question }, { role: "assistant", content: answer });
@@ -138,7 +150,7 @@ async function ask(question) {
       botEl.textContent = "معليش، حصلت مشكلة في الاتصال. جرب تاني بعد شوية.";
     }
   } finally {
-    setStatus(""); busy = false; send.disabled = false;
+    clearTimeout(watchdog); setStatus(""); busy = false; send.disabled = false;
   }
 }
 

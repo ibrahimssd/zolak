@@ -158,15 +158,21 @@ def answer(question: str, history: list | None = None):
     recs = [h.rec for h in hits]
     msgs = build_messages(question, recs, _clean_history(history))
     text = ""
-    try:
-        for piece in generate(msgs):
-            text += piece
-            yield text
-    except Exception as e:  # ZeroGPU: this visitor's daily GPU quota is used up (never billed) -> friendly message
-        if "quota" not in str(e).lower() and "gpu" not in str(e).lower():
-            raise
-        yield (text + "\n\n" if text else "") + BUSY
-        return
+    for attempt in (1, 2):
+        try:
+            for piece in generate(msgs):
+                text += piece
+                yield text
+            break
+        except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
+            print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
+            transient = "quota" not in str(e).lower() and not text
+            if attempt == 1 and transient:
+                time.sleep(2)
+                continue
+            # every final message ends with SOURCES_SEP so the web page knows the answer is complete
+            yield (text + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
+            return
     yield text.strip() + SOURCES_SEP + _sources_line(recs)
 
 
