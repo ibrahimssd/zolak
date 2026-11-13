@@ -64,7 +64,7 @@ def main() -> None:
         api.create_repo(data_repo, repo_type="dataset", private=True, exist_ok=True)
         print(f"uploading {args.index_dir} -> {data_repo}/index (private)")
         api.upload_folder(folder_path=args.index_dir, path_in_repo="index", repo_id=data_repo, repo_type="dataset",
-                          allow_patterns=["kb.faiss", "kb.jsonl", "config.json"])
+                          allow_patterns=["kb.faiss", "kb_q.faiss", "kb.jsonl", "config.json"])
 
     if "gpu" in steps:
         # PRIVATE ZeroGPU worker: only the owner's token can call it, so GPU time uses the owner's PRO quota.

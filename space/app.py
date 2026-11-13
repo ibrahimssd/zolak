@@ -58,6 +58,7 @@ from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 
 from prompts import build_messages
 from retriever import HybridRetriever
+from websearch import search_official
 
 TOKEN = os.environ.get("HF_TOKEN")
 # BACKEND: "zerogpu" = full-precision model with PyTorch on Hugging Face ZeroGPU (included in PRO, quota-based)
@@ -77,6 +78,7 @@ except (ImportError, RuntimeError):
     pass
 # MIN_SIM calibrated on the raw-thread KB: relevant top hits 0.52-0.72, off-topic mostly 0.34-0.51
 TOP_K, MIN_SIM, MAX_TOKENS, HISTORY_TURNS = 2, 0.55, 220, 2
+WEB_SEARCH = os.environ.get("WEB_SEARCH", "1") == "1"
 SOURCES_SEP = "\n\n---\n"
 
 # ---------------------------------------------------------------- load
@@ -163,9 +165,18 @@ def _clean_history(history: list | None) -> list[dict]:
 
 def _sources_line(recs: list[dict]) -> str:
     if not recs:
-        return "ℹ️ معلومة عامة، ما من تجارب القروب — اتأكد من الجهات الرسمية."
-    months = sorted({r["date"][:7] for r in recs}, reverse=True)
-    return "📅 من تجارب أعضاء القروب (" + "، ".join(months) + ") — المعلومات بتتغير، اتأكد من الجهات الرسمية."
+        return "ℹ️ ما لقيت معلومة في القروب ولا في المواقع الرسمية — اتأكد من الجهات الرسمية."
+    group = [r for r in recs if r.get("source") not in ("official", "web")]
+    official = [r for r in recs if r.get("source") == "official"]
+    web = [r for r in recs if r.get("source") == "web"]
+    parts = []
+    if group:
+        parts.append("📅 من تجارب أعضاء القروب (" + "، ".join(sorted({r["date"][:7] for r in group}, reverse=True)) + ")")
+    if official:
+        parts.append("🌐 من موقع رسمي: " + "، ".join(sorted({r["site"] for r in official})))
+    if web:
+        parts.append("🔎 من بحث في مواقع رسمية: " + "، ".join(sorted({r["site"] for r in web})))
+    return " · ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
 
 
 def answer(question: str, history: list | None = None):
@@ -173,26 +184,67 @@ def answer(question: str, history: list | None = None):
     if not question:
         yield "اكتب سؤالك 🙂"
         return
-    hits = [h for h in retriever.search(question, k=TOP_K) if h.dense_sim >= MIN_SIM]
-    recs = [h.rec for h in hits]
-    msgs = build_messages(question, recs, _clean_history(history))
-    text = ""
-    for attempt in (1, 2):
+    hist = _clean_history(history)
+    # context: best 2 records overall + the best official record when its question matches closely
+    recs = [h.rec for h in retriever.search(question, k=TOP_K) if h.dense_sim >= MIN_SIM]
+    off = retriever.best_of_source(question, "official")
+    if off and off.rec not in recs:
+        recs.append(off.rec)
+    if not recs and WEB_SEARCH:  # neither the group nor the crawled official pages: search official sites live
+        recs = search_official(question, retriever.embed)
+
+    web_tried = any(r.get("source") == "web" for r in recs)
+    while True:
+        msgs = build_messages(question, recs, hist)
+        text, checked, switch = "", False, None
         try:
-            for piece in generate(msgs):
+            for piece in _generate_with_retry(msgs):
                 text += piece
+                if not checked:
+                    if len(text) < 40:
+                        continue
+                    checked = True
+                    # the model says the context does not answer the question -> try official sites live
+                    if WEB_SEARCH and not web_tried and REFUSAL_RE.match(text.strip()):
+                        web_tried = True
+                        switch = search_official(question, retriever.embed)
+                        if switch:
+                            break
                 yield text
-            break
-        except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
-            print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
-            transient = "quota" not in str(e).lower() and not text
-            if attempt == 1 and transient:
-                time.sleep(2)
-                continue
+        except GpuBusy:
             # every final message ends with SOURCES_SEP so the web page knows the answer is complete
             yield (text + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
             return
-    yield text.strip() + SOURCES_SEP + _sources_line(recs)
+        if switch:
+            recs = switch
+            continue
+        yield text.strip() + SOURCES_SEP + _sources_line(recs)
+        return
+
+
+class GpuBusy(Exception):
+    pass
+
+
+# the model's trained "not found" openings (src/train/make_sft_data.py IRRELEVANT / NOCONTEXT)
+REFUSAL_RE = re.compile(r"^(للأسف ما لقيت|المعلومات اللي عندي ما بتجاوب|ما لقيت معلومة|السؤال دا ما لقيت)")
+
+
+def _generate_with_retry(msgs: list[dict]):
+    """Yield text pieces; retry once on a transient GPU error before any text; GpuBusy when out of quota."""
+    for attempt in (1, 2):
+        produced = False
+        try:
+            for piece in generate(msgs):
+                produced = True
+                yield piece
+            return
+        except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
+            print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
+            if attempt == 1 and not produced and "quota" not in str(e).lower():
+                time.sleep(2)
+                continue
+            raise GpuBusy(str(e)) from e
 
 
 def feedback(question: str, answer_text: str, rating: str) -> str:

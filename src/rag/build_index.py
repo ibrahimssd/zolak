@@ -33,6 +33,11 @@ def build(kb_path: Path, out_dir: Path, device: str):
     index.add(emb)
     out_dir.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(out_dir / "kb.faiss"))
+    qemb = model.encode([r["question"] for r in records], normalize_embeddings=True, batch_size=64,
+                        convert_to_numpy=True, show_progress_bar=False).astype("float32")
+    qindex = faiss.IndexFlatIP(qemb.shape[1])
+    qindex.add(qemb)
+    faiss.write_index(qindex, str(out_dir / "kb_q.faiss"))
     shutil.copy(kb_path, out_dir / "kb.jsonl")
     (out_dir / "config.json").write_text(json.dumps({"embed_model": EMBED_MODEL, "dim": int(emb.shape[1]),
                                                      "n_records": len(records)}, indent=1))

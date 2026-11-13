@@ -65,6 +65,9 @@ class HybridRetriever:
         self.cfg = json.loads((d / "config.json").read_text())
         self.records = [json.loads(l) for l in (d / "kb.jsonl").open(encoding="utf-8")]
         self.index = faiss.read_index(str(d / "kb.faiss"))
+        # question-only index: a student's question is closest to the record's question (FAQ-style matching)
+        qpath = d / "kb_q.faiss"
+        self.qindex = faiss.read_index(str(qpath)) if qpath.exists() else None
         self.bm25 = BM25Okapi([tokenize(doc_text(r)) for r in self.records])
         if embed_model is None:
             from sentence_transformers import SentenceTransformer
@@ -75,22 +78,44 @@ class HybridRetriever:
         return self.embedder.encode(texts, normalize_embeddings=True, convert_to_numpy=True).astype("float32")
 
     def search(self, query: str, k: int = 3, pool: int = 30, rrf_k: int = 60, qvec=None) -> list[Hit]:
+        """RRF over question-similarity (weight 2), whole-record similarity and BM25.
+        Hit.dense_sim = max(question sim, record sim), used for the relevance threshold."""
         import numpy as np
 
         qv = self.embed([query]) if qvec is None else qvec.reshape(1, -1)
-        dscores, didx = self.index.search(qv, min(pool, len(self.records)))
+        n = min(pool, len(self.records))
+        dscores, didx = self.index.search(qv, n)
         dense = [int(i) for i in didx[0] if i >= 0]
-        dsim = {int(i): float(s) for i, s in zip(didx[0], dscores[0]) if i >= 0}
+        sim = {int(i): float(s) for i, s in zip(didx[0], dscores[0]) if i >= 0}
+        qlist: list[int] = []
+        if self.qindex is not None:
+            qscores, qidx = self.qindex.search(qv, n)
+            qlist = [int(i) for i in qidx[0] if i >= 0]
+            for i, s in zip(qidx[0], qscores[0]):
+                if i >= 0:
+                    sim[int(i)] = max(sim.get(int(i), -1.0), float(s))
         bscores = self.bm25.get_scores(tokenize(query))
         sparse = [int(i) for i in np.argsort(-bscores)[:pool] if bscores[i] > 0]
         fused: dict[int, float] = {}
-        for rank, i in enumerate(dense):
-            fused[i] = fused.get(i, 0) + 1 / (rrf_k + rank + 1)
-        for rank, i in enumerate(sparse):
-            fused[i] = fused.get(i, 0) + 1 / (rrf_k + rank + 1)
+        for weight, ranking in ((2.0, qlist), (1.0, dense), (1.0, sparse)):
+            for rank, i in enumerate(ranking):
+                fused[i] = fused.get(i, 0) + weight / (rrf_k + rank + 1)
         top = sorted(fused, key=fused.get, reverse=True)[:k]
-        if any(i not in dsim for i in top):  # BM25-only hits: compute their dense similarity directly
-            vecs = self.index.reconstruct_batch(np.array(top, dtype="int64"))
-            dsim.update({i: float(v @ qv[0]) for i, v in zip(top, vecs)})
+        missing = [i for i in top if i not in sim]
+        if missing:  # BM25-only hits: compute their similarity directly
+            vecs = self.index.reconstruct_batch(np.array(missing, dtype="int64"))
+            sim.update({i: float(v @ qv[0]) for i, v in zip(missing, vecs)})
         return [Hit(self.records[i], fused[i], dense.index(i) if i in dense else None,
-                    sparse.index(i) if i in sparse else None, dsim[i]) for i in top]
+                    sparse.index(i) if i in sparse else None, sim[i]) for i in top]
+
+    def best_of_source(self, query: str, source: str, min_sim: float = 0.70, pool: int = 80) -> Hit | None:
+        """Best record of one source by question similarity. Keeps official answers visible even when many
+        group records about the same topic crowd the fused ranking."""
+        if self.qindex is None:
+            return None
+        qv = self.embed([query])
+        scores, idx = self.qindex.search(qv, min(pool, len(self.records)))
+        for s, i in zip(scores[0], idx[0]):
+            if i >= 0 and self.records[int(i)].get("source") == source:
+                return Hit(self.records[int(i)], float(s), None, None, float(s)) if s >= min_sim else None
+        return None

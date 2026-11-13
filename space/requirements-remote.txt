@@ -7,3 +7,6 @@ faiss-cpu>=1.8,<1.12
 rank-bm25==0.2.2
 huggingface_hub>=0.30,<1.0
 numpy<2.3
+ddgs==9.16.1
+trafilatura==2.0.0
+requests>=2.31

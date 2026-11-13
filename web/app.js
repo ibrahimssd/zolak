@@ -113,7 +113,11 @@ async function ask(question) {
     busy = false; send.disabled = false; setStatus("");
     botEl.classList.remove("cursor");
     if (!full) botEl.textContent = "معليش، الرد اتأخر شديد. جرب تاني بعد شوية.";
-  }, 150000);
+  }, 300000);
+  // ZeroGPU can take a while to attach a GPU after a quiet period: tell the student instead of looking stuck.
+  const waking = setTimeout(() => {
+    if (!full) setStatus("⏳ زولك بيصحى… أول سؤال بعد فترة هدوء ممكن ياخد دقيقة أو اتنين، الأسئلة الجاية بتكون أسرع.");
+  }, 12000);
   try {
     const c = await connect();
     const job = c.submit("/ask", [question, history.slice(-4)]);
@@ -130,6 +134,7 @@ async function ask(question) {
         } else { setStatus(""); }
       } else if (msg.type === "data") {
         full = String(msg.data?.[0] ?? "");
+        clearTimeout(waking); setStatus("");
         fillBot(botEl, full, false);
         scrollChat();
         if (full.includes(SOURCES_SEP)) break;   // final chunk
@@ -150,7 +155,7 @@ async function ask(question) {
       botEl.textContent = "معليش، حصلت مشكلة في الاتصال. جرب تاني بعد شوية.";
     }
   } finally {
-    clearTimeout(watchdog); setStatus(""); busy = false; send.disabled = false;
+    clearTimeout(watchdog); clearTimeout(waking); setStatus(""); busy = false; send.disabled = false;
   }
 }
 
