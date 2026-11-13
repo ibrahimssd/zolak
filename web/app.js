@@ -18,6 +18,16 @@ const TOPICS = [
   { ico: "🩺", title: "التأمين الصحي", hint: "TK، AOK، تأمين طلاب", q: "التأمين الصحي للطلاب ياتو أحسن؟", c: "var(--nile)" },
 ];
 
+// The Gradio client sends credentialed requests. Hugging Face's edge proxy answers the CORS preflight without
+// Access-Control-Allow-Credentials, so browsers block them. The public Space needs no cookies: drop credentials
+// for Hugging Face hosts only.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, init = {}) => {
+  const url = typeof input === "string" ? input : input?.url || String(input);
+  if (/\.hf\.space\/|huggingface\.co\//.test(url)) init = { ...init, credentials: "omit" };
+  return nativeFetch(input, init);
+};
+
 const $ = (id) => document.getElementById(id);
 const chat = $("chat"), form = $("ask"), q = $("q"), send = $("send"), statusEl = $("status"), notice = $("notice");
 let client = null;
