@@ -124,11 +124,14 @@ def cmd_gen(args) -> None:
               dtype="bfloat16")
     params = SamplingParams(temperature=0.0, max_tokens=300, repetition_penalty=1.1)
     outs = llm.chat([build_messages(t["query"], t["ctx"]) for t in tests], params, use_tqdm=True)
+    from dialect_fix import build_vocab, sudanize_text   # the app's dialect normalizer (vocabulary of the index)
+    vocab = build_vocab([" ".join([r["question"], r["answer"], *r.get("facts", [])])
+                         for r in load(Path(args.index) / "kb.jsonl")])
     with (OUT / f"answers_{args.name}.jsonl").open("w", encoding="utf-8") as f:
         for t, o in zip(tests, outs):
-            raw = o.outputs[0].text.strip()
-            f.write(json.dumps({"qid": t["qid"], "raw": raw, "answer": guard_links(raw, t["ctx"], final=True)},
-                               ensure_ascii=False) + "\n")
+            raw = o.outputs[0].text.strip()   # the model's own text, before the app's normalizer and link guard
+            answer = guard_links(sudanize_text(raw, vocab), t["ctx"], final=True)   # what the student sees
+            f.write(json.dumps({"qid": t["qid"], "raw": raw, "answer": answer}, ensure_ascii=False) + "\n")
     print(f"{len(tests)} answers -> {OUT / f'answers_{args.name}.jsonl'}")
 
 
@@ -144,6 +147,7 @@ def summarize(rows: list[dict]) -> dict:
     raw_urls = [(u.rstrip(".,؛!؟?/"), r) for r in rows for u in URL_RE.findall(r["raw"])]
     ctx_links = lambda r: {l.rstrip("/.") for c in r["ctx"] for l in c.get("links", [])}  # noqa: E731
     dial = [score(r["answer"]) for r in rows]
+    raw_dial = [score(r["raw"]) for r in rows]
     pct = lambda xs: round(100 * sum(xs) / len(xs), 1) if xs else None  # noqa: E731
     return {
         "n": len(rows),
@@ -158,6 +162,7 @@ def summarize(rows: list[dict]) -> dict:
         "n_raw_links": len(raw_urls),
         "dialect_sd_per_answer": round(st.mean(d["sd"] for d in dial), 2) if dial else None,
         "non_sudanese_answers_%": pct([d["other"] > 0 for d in dial]),
+        "non_sudanese_raw_model_%": pct([d["other"] > 0 for d in raw_dial]),   # before the app's normalizer
     }
 
 
@@ -222,6 +227,7 @@ def main() -> None:
     g = sub.add_parser("gen")
     g.add_argument("--name", required=True)
     g.add_argument("--model", required=True)
+    g.add_argument("--index", default="data/index", help="its kb.jsonl gives the normalizer's vocabulary")
     j = sub.add_parser("judge")
     j.add_argument("--names", nargs="+", required=True)
     j.add_argument("--tp", type=int, default=4)

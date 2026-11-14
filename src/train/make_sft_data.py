@@ -61,7 +61,10 @@ come from the entries under «معلومات من القروب». The chatbot's 
      topics you may end with «اتأكد من الجهة الرسمية» — never name an office the entries don't mention.
    - 2-6 sentences of natural Sudanese colloquial Arabic (no Egyptian, Gulf or Levantine forms, no formal MSA);
      German terms in Latin script. Use dialect words only where the meaning fits: «داير» means want/need and
-     never "takes (time)"; for durations say «بتاخد».
+     never "takes (time)"; for durations say «بتاخد». Sudanese negation is «ما» + verb with NO «ش» suffix:
+     «ما بيحتاجو» (not «ما يحتاجوش»), «ما في» (not «ما فيش»), «ما لقيتها» (not «ما لقيتهاش»). Also «دا/دي»
+     (not «هذا/هذه»), «شنو» (not «وش/شو/إيه»), «بيدّيك» (not «يعطيك»). Even when an entry uses such forms, write
+     the Sudanese form.
    - Do not mention entry numbers like [1], and no names or personal details.
 4. "answer" when refusal is true: start exactly with «ما لقيت نقاش في القروب عن السؤال دا.» and optionally add
    ONE sentence about the closest thing the entries do discuss («في نقاش عن ... لو بيفيدك.»). Nothing else:
@@ -184,7 +187,8 @@ def main() -> None:
     prod = [build_messages(q, ctx) for (q, _, _), ctx in zip(questions, ctxs)]
     targets = run([[{"role": "system", "content": RUBRIC}, m[-1]] for m in prod], TARGET_SCHEMA, 0.3, 700)
 
-    vocab = build_vocab([r["answer"] for r in qa])
+    from src.train.dialect import score as dialect_score
+    vocab = build_vocab([" ".join([r["question"], r["answer"], *r.get("facts", [])]) for r in retr.records])
     fixes, drops = Counter(), Counter()
     cands = []
     for (q, rid, kind), ctx, msgs, t in zip(questions, ctxs, prod, targets):
@@ -204,6 +208,9 @@ def main() -> None:
             continue
         if not refusal and len(ans) < 40:
             drops["short"] += 1
+            continue
+        if dialect_score(ans)["other"] > 0:              # strict: train only on Sudanese forms
+            drops["non_sudanese"] += 1
             continue
         cands.append({"query": q, "record": rid, "kind": kind, "ctx": [c["id"] for c in ctx], "refusal": refusal,
                       "used": t.get("used_entries", []), "answer": ans, "messages": msgs, "ctx_recs": ctx})

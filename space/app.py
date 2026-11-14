@@ -13,8 +13,8 @@ API (used by the GitHub Pages site via @gradio/client):
              the final chunk contains SOURCES_SEP followed by a short sources line
   /feedback  (question: str, answer: str, rating: "up"|"down") -> "ok"
   /correction (question: str, answer: str, correction: str) -> "ok"   the student's answer to «أها الصح شنو؟» after 👎
-Feedback rows (FEEDBACK_REPO, data/feedback-*.jsonl):
-  {ts, rating, question, answer, entries: [ids of the 2 retrieved KB entries], model[, correction]}
+Feedback rows (FEEDBACK_REPO, data/feedback-*.jsonl; schema in the dataset card written by deploy_hf.py):
+  {ts, rating, question, answer, entries: [ids of the 2 retrieved KB entries], model, correction (null unless sent)}
 """
 from __future__ import annotations
 
@@ -59,6 +59,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 import gradio as gr
 from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 
+from dialect_fix import build_vocab, sudanize_text
 from prompts import build_messages, guard_links
 from retriever import HybridRetriever
 
@@ -93,6 +94,8 @@ t0 = time.time()
 index_dir = os.environ.get("LOCAL_INDEX") or str(
     Path(snapshot_download(DATA_REPO, repo_type="dataset", allow_patterns=["index/*"], token=TOKEN)) / "index")
 retriever = HybridRetriever(index_dir)   # embedder stays on CPU: GPU quota is spent only on generation
+# words of the knowledge base: the dialect normalizer strips Egyptian «ما ...ش» only around known stems
+VOCAB = build_vocab([" ".join([r["question"], r["answer"], *r.get("facts", [])]) for r in retriever.records])
 if BACKEND == "zerogpu":
     from threading import Thread
 
@@ -188,6 +191,11 @@ def _sources_line(recs: list[dict], answer_text: str = "") -> str:
     return "📅 من القروب: " + "، ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
 
 
+def _clean(text: str, recs: list[dict], final: bool = False) -> str:
+    """Sudanese dialect forms («ما فيش» -> «ما في», «هذا» -> «دا», ...) and only links from the retrieved entries."""
+    return guard_links(sudanize_text(text, VOCAB), recs, final=final)
+
+
 def answer(question: str, history: list | None = None):
     question = re.sub(r"\s+", " ", (question or "")).strip()[:1000]
     if not question:
@@ -201,7 +209,7 @@ def answer(question: str, history: list | None = None):
         try:
             for piece in generate(msgs):
                 text += piece
-                yield guard_links(text, recs)
+                yield _clean(text, recs)
             break
         except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
             print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
@@ -210,9 +218,9 @@ def answer(question: str, history: list | None = None):
                 time.sleep(2)
                 continue
             # every final message ends with SOURCES_SEP so the web page knows the answer is complete
-            yield (text + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
+            yield (_clean(text, recs, final=True) + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
             return
-    text = guard_links(text.strip(), recs, final=True)
+    text = _clean(text.strip(), recs, final=True)
     yield text + SOURCES_SEP + _sources_line(recs, text)
 
 
@@ -235,8 +243,9 @@ def _feedback_row(question: str, answer_text: str, rating: str) -> dict:
     except Exception as e:
         print(f"feedback retrieval failed: {type(e).__name__}: {e}", flush=True)
         entries = []
+    # always the same columns in the same order: the dataset viewer needs one schema across all files
     return {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "rating": rating, "question": question,
-            "answer": (answer_text or "")[:3000], "entries": entries, "model": MODEL_NAME}
+            "answer": (answer_text or "")[:3000], "entries": entries, "model": MODEL_NAME, "correction": None}
 
 
 def feedback(question: str, answer_text: str, rating: str) -> str:

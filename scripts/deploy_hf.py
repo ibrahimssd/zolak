@@ -27,6 +27,38 @@ from huggingface_hub import HfApi, get_token
 
 ROOT = Path(__file__).resolve().parents[1]
 STORAGE = Path(os.environ.get("ZOLAK_STORAGE", f"/temp-data/{os.environ.get('USER', 'user')}/zolak"))
+# Explicit schema for the feedback dataset: files written by older app versions lack some columns, and without it
+# the Hub's dataset viewer fails ("column names don't match"). Missing columns load as null.
+FEEDBACK_CARD = """---
+configs:
+- config_name: default
+  data_files:
+  - split: train
+    path: data/*.jsonl
+dataset_info:
+  features:
+  - name: ts
+    dtype: string
+  - name: rating
+    dtype: string
+  - name: question
+    dtype: string
+  - name: answer
+    dtype: string
+  - name: entries
+    sequence: string
+  - name: model
+    dtype: string
+  - name: correction
+    dtype: string
+---
+
+# Zolak feedback (private)
+
+Ratings from the Zolak chat page. `rating` is up/down; after a thumbs-down the page asks «أها الصح شنو؟» and the
+student's answer is stored in `correction`. `entries` are the ids of the two knowledge-base entries the answer was
+written from, `model` the model that wrote it. Raw user text: anonymize before any training use.
+"""
 
 
 def main() -> None:
@@ -102,6 +134,8 @@ def main() -> None:
                     sys.exit("space/requirements.txt still has __WHEEL_URL__: pass --wheel-url (GitHub release asset)")
                 req = req.replace("__WHEEL_URL__", args.wheel_url)
         api.create_repo(fb_repo, repo_type="dataset", private=True, exist_ok=True)
+        api.upload_file(path_or_fileobj=FEEDBACK_CARD.encode(), path_in_repo="README.md", repo_id=fb_repo,
+                        repo_type="dataset", commit_message="Dataset card with the feedback schema")
         api.create_repo(space_repo, repo_type="space", space_sdk="gradio", private=False, exist_ok=True)
         api.add_space_secret(space_repo, "HF_TOKEN", token)
         for k, v in {"BACKEND": args.backend, "MODEL_REPO": model_repo, "MODEL_FILE": Path(args.model_file).name,
