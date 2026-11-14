@@ -180,6 +180,12 @@ textarea:focus { border-color: var(--accent); }
 .pillars span { font-size: 1.5rem; }
 .pillars h3 { margin: 4px 0; font-size: 1.05rem; }
 .pillars p { margin: 0; color: var(--muted); font-size: .9rem; }
+.funding {
+  display: flex; gap: 10px; align-items: flex-start; margin: 16px auto 0; padding: 12px 14px; text-align: start;
+  background: var(--sand); border: 1px dashed var(--sun); border-radius: 14px;
+}
+.funding span { font-size: 1.3rem; line-height: 1.4; }
+.funding p { margin: 0; font-size: .92rem; }
 
 /* footer */
 .foot { text-align: center; padding: 14px 16px 22px; font-size: .88rem; }
