@@ -56,7 +56,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 import gradio as gr
 from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 
-from prompts import build_messages
+from prompts import build_messages, guard_links
 from retriever import HybridRetriever
 
 TOKEN = os.environ.get("HF_TOKEN")
@@ -183,26 +183,6 @@ def _sources_line(recs: list[dict], answer_text: str = "") -> str:
         else:
             parts.append(f"نقاش {r['date'][:7]}")
     return "📅 من القروب: " + "، ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
-
-
-URL_RE = re.compile(r"https?://[^\s<>\"'،)]+")
-LINK_LABEL_RE = re.compile(r"\s*(?:الرابط الرسمي|الرابط|رابط)\s*:\s*(?=$|\n)")
-
-
-def guard_links(text: str, recs: list[dict], final: bool = False) -> str:
-    """Keep only links that the retrieved group entries contain. While streaming, a URL at the very end may
-    still be incomplete, so it is checked only once the answer is final."""
-    allowed = {u.rstrip("/.") for r in recs for u in r.get("links", [])}
-
-    def repl(m: re.Match) -> str:
-        url = m.group(0).rstrip(".,؛!؟?")
-        tail = m.group(0)[len(url):]
-        if not final and m.end() == len(text):
-            return m.group(0)
-        return m.group(0) if url.rstrip("/") in allowed else tail
-
-    text = URL_RE.sub(repl, text)
-    return LINK_LABEL_RE.sub("", text) if final else text
 
 
 def answer(question: str, history: list | None = None):

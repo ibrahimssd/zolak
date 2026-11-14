@@ -1,13 +1,17 @@
 """Summarize the group's responses per question cluster (teacher LLM on local GPUs).
 
 1. Embed the questions of the group KB (bge-m3) and cluster them (agglomerative, cosine distance <= 1 - --sim).
-2. For each cluster with >= 2 records, the teacher writes ONE consolidated answer in Sudanese dialect that uses
+2. Member check (teacher): records that answer a different question than the cluster's main one are removed;
+   a cluster with fewer than 2 remaining records gets no summary. This runs BEFORE the summary is written, so
+   the summary's text, count and date range only cover the members that stay.
+3. For each remaining cluster the teacher writes ONE consolidated answer in Sudanese dialect that uses
    ONLY those records: how many discussions and when, what most people said, where they disagreed, concrete
    numbers with their dates.
-3. Output summary records (source="summary") that sit in the KB next to the individual records.
+4. Output summary records (source="summary") that sit in the KB next to the individual records.
 
-Input : data/processed/kb.jsonl (group knowledge only)
-Output: data/processed/kb_summaries.jsonl, data/processed/kb_group.jsonl (individual + summaries, for the index)
+Input : data/processed/kb_audited.jsonl (group knowledge only; pass with --kb)
+Output: data/processed/kb_summaries.jsonl, data/processed/kb_group.jsonl (individual + summaries, for the index),
+        data/interim/summary_check.jsonl (member-check verdicts, for review)
 
 Usage:
     source scripts/env.sh
@@ -46,9 +50,27 @@ Rules:
    saying it summarizes the group, e.g. «في {n} نقاشات في القروب بين {from} و{to}، الناس قالو …». Give what most
    people agreed on, then differences or exceptions («بس في ناس قالو …»), and concrete amounts/durations WITH the
    month/year they were mentioned when they differ over time. No Egyptian/Gulf/Levantine forms (مش، مو، هذي، -ش).
-   Keep German terms in Latin script. No names or personal details.
+   Use dialect words only where the meaning fits: «داير» means want/need and never "takes (time)"; for
+   durations say «بتاخد». Keep German terms in Latin script. No names or personal details.
 4. "facts": 2-6 short atomic facts in Arabic, each with its date if it may change.
 5. "german_terms": search keywords. "topic": the best topic label."""
+
+CHECK_SCHEMA = {  # property order matters: name the main question first, then judge each record against it
+    "type": "object",
+    "properties": {
+        "main_question": {"type": "string"},
+        "off_topic": {"type": "array", "items": {"type": "integer"}},
+    },
+    "required": ["main_question", "off_topic"],
+}
+
+CHECK_SYSTEM = """You check a cluster of dated Q&A records from a Sudanese students' WhatsApp group in Germany.
+The records were grouped automatically because their questions look similar; some may not belong together.
+1. "main_question": in English, the ONE question that most records answer.
+2. "off_topic": the numbers k of the records [k] that answer a DIFFERENT question: another sub-question, another
+   country, office, document, visa or permit type, or a different situation, so that using their answer for the
+   main question would be wrong or misleading. Records that answer the main question with different details,
+   numbers, dates or opinions are NOT off-topic. Return [] when all records fit."""
 
 MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
 
@@ -120,9 +142,38 @@ def main() -> None:
 
     llm = LLM(model=TEACHER, tensor_parallel_size=args.tp, max_model_len=12288, gpu_memory_utilization=0.90,
               enable_prefix_caching=True)
+    t0 = time.time()
+
+    # member check: drop records that answer a different question, before the summary is written
+    check_params = SamplingParams(temperature=0.0, max_tokens=400,
+                                  guided_decoding=GuidedDecodingParams(json=CHECK_SCHEMA))
+    checks = llm.chat([[{"role": "system", "content": CHECK_SYSTEM}, {"role": "user", "content": prompt(c)}]
+                       for c in clusters], check_params, use_tqdm=True)
+    kept_clusters, review, n_removed = [], [], 0
+    for c, o in zip(clusters, checks):
+        try:
+            chk = json.loads(o.outputs[0].text)
+            off = {int(k) for k in chk.get("off_topic", []) if 1 <= int(k) <= len(c)}
+        except (json.JSONDecodeError, TypeError, ValueError):
+            chk, off = {}, set()
+        keep = [i for k, i in enumerate(c, 1) if k not in off]
+        n_removed += len(c) - len(keep)
+        review.append({"main_question": chk.get("main_question", ""), "members": [records[i]["id"] for i in c],
+                       "off_topic": [records[c[k - 1]]["id"] for k in sorted(off)],
+                       "off_topic_questions": [records[c[k - 1]]["question"] for k in sorted(off)],
+                       "summarized": len(keep) >= 2})
+        if len(keep) >= 2:
+            kept_clusters.append(keep)
+    Path("data/interim").mkdir(parents=True, exist_ok=True)
+    with open("data/interim/summary_check.jsonl", "w", encoding="utf-8") as f:
+        for x in review:
+            f.write(json.dumps(x, ensure_ascii=False) + "\n")
+    print(f"member check: removed {n_removed} off-topic members; {len(clusters) - len(kept_clusters)} clusters "
+          f"left with < 2 members (no summary); {len(kept_clusters)} clusters to summarize")
+    clusters = kept_clusters
+
     params = SamplingParams(temperature=0.2, top_p=0.9, max_tokens=1200,
                             guided_decoding=GuidedDecodingParams(json=SCHEMA))
-    t0 = time.time()
     outs = llm.chat([[{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt(c)}] for c in clusters],
                     params, use_tqdm=True)
     from src.ingest import pii

@@ -1,7 +1,7 @@
 """Deploy to Hugging Face (run on this server after `hf auth login` with a WRITE token).
 
 Creates (if missing) and uploads:
-  <user>/zolak-models     PRIVATE model repo   <- GGUF model file
+  <user>/zolak-models     PRIVATE model repo   <- GGUF model file, merged model folders, fine-tuned embedder
   <user>/zolak-data       PRIVATE dataset      <- index/ (kb.faiss, kb.jsonl, config.json)
   <user>/zolak-feedback   PRIVATE dataset      <- written by the Space (👍/👎)
   <user>/zolak            PUBLIC Gradio Space  <- space/ (code only), with secret HF_TOKEN + variables
@@ -9,6 +9,8 @@ Creates (if missing) and uploads:
 Usage:
   source scripts/env.sh
   python3 scripts/deploy_hf.py --step model   # upload GGUF (4-5 GB, once per model version)
+  python3 scripts/deploy_hf.py --step weights --model-subdir zolak-allam-v4   # merged safetensors folder
+  python3 scripts/deploy_hf.py --step embed   # fine-tuned embedder folder (config.json embed_repo points here)
   python3 scripts/deploy_hf.py --step data    # upload index/ (after every KB rebuild; leak-tested first)
   python3 scripts/deploy_hf.py --step space   # create/update the Space code + settings
   python3 scripts/deploy_hf.py --step all
@@ -24,14 +26,16 @@ from pathlib import Path
 from huggingface_hub import HfApi, get_token
 
 ROOT = Path(__file__).resolve().parents[1]
-STORAGE = Path(os.environ.get("ZOLAK_STORAGE", f"/temp/{os.environ.get('USER', 'user')}/zolak"))
+STORAGE = Path(os.environ.get("ZOLAK_STORAGE", f"/temp-data/{os.environ.get('USER', 'user')}/zolak"))
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--step", choices=["model", "data", "space", "gpu", "all"], required=True)
+    ap.add_argument("--step", choices=["model", "weights", "embed", "data", "space", "gpu", "all"], required=True)
     ap.add_argument("--model-file", default=str(STORAGE / "models/gguf/zolak-allam-v2-Q4_K_M.gguf"))
     ap.add_argument("--index-dir", default=str(ROOT / "data/index"))
+    ap.add_argument("--embed-dir", default=str(STORAGE / "models/zolak-embed-v1"),
+                    help="fine-tuned embedder folder; uploaded as <model repo>/<folder name>/")
     ap.add_argument("--space-name", default="zolak")
     ap.add_argument("--wheel-url", default="", help="public URL of the llama-cpp-python wheel (GitHub release)")
     ap.add_argument("--backend", choices=["remote", "zerogpu", "llamacpp"], default="remote",
@@ -55,6 +59,15 @@ def main() -> None:
         mf = Path(args.model_file)
         print(f"uploading {mf.name} ({mf.stat().st_size / 1e9:.1f} GB) -> {model_repo} (private)")
         api.upload_file(path_or_fileobj=str(mf), path_in_repo=mf.name, repo_id=model_repo, repo_type="model")
+
+    for step, folder in (("weights", STORAGE / "models" / args.model_subdir), ("embed", Path(args.embed_dir))):
+        if step in steps:
+            if not (folder / "config.json").exists():
+                sys.exit(f"{folder} is not a model folder")
+            api.create_repo(model_repo, repo_type="model", private=True, exist_ok=True)
+            print(f"uploading {folder} -> {model_repo}/{folder.name}/ (private)")
+            api.upload_folder(folder_path=str(folder), path_in_repo=folder.name, repo_id=model_repo,
+                              repo_type="model", ignore_patterns=["_run/*", "checkpoint-*/*"])
 
     if "data" in steps:
         # privacy gate: never upload a KB that fails the leak test

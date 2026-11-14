@@ -1,6 +1,6 @@
 # Source this before any heavy step:  source scripts/env.sh
-# Puts all large files (HF models, checkpoints, venvs, pip/tmp caches) on /temp, not the (nearly full) root disk.
-export ZOLAK_STORAGE="${ZOLAK_STORAGE:-/temp/$USER/zolak}"
+# Puts all large files (HF models, checkpoints, venvs, pip/tmp caches) on /temp-data, not the (nearly full) root disk.
+export ZOLAK_STORAGE="${ZOLAK_STORAGE:-/temp-data/$USER/zolak}"
 
 export HF_HOME="$ZOLAK_STORAGE/hf_cache"
 export HF_HUB_CACHE="$HF_HOME/hub"

@@ -71,6 +71,8 @@ Rules:
 3. Language of `question` and `answer`: natural SUDANESE Arabic dialect only (العامية السودانية), like a helpful
    Sudanese student talking to a friend. Typical Sudanese forms: عشان، داير/دايرة، عايز، زول، ياتو، شنو، كدا،
    برضو، هسي/هسع، لسه، ساي، شديد، بتاع/حق، قروش، تمشي، بتقدر، ما بتحتاج، حتلقى، قبيل، ياخ.
+   Use dialect words only where the meaning fits: «داير» means want/need and never "takes (time)"; for
+   durations say «بتاخد». Do not force these words into every sentence.
    Do NOT use Gulf (وش، هذي، مو، ابغى، يعطيك إياه), Egyptian (مش، -ش negation like ما تبقاش، هـ-future like هيوريك،
    دلوقتي، إزاي) or Levantine (هيك، بدك، شو) forms, and do not write formal MSA.
    Use only Arabic script plus German/English terms in Latin script (Sperrkonto, Anmeldung, Aufenthaltstitel,
@@ -156,6 +158,8 @@ Hard rules:
   يطلبون / يقولون (Gulf -ون) → بيطلبو / بيقولو      هذا / هذي / هاد → دا / دي      كتير/وايد → كتير/شديد
   زين → كويس      يعطيك إياه → بيدّوك ليهو      بس fine, برضو for "also", عشان for "because/so that"
 - Prefer Sudanese verb forms: بيـ for habitual (بيطلبو، بتمشي), حـ for future, ما + verb for negation.
+- Use dialect words only where the meaning fits: «داير» means want/need and never "takes (time)"
+  (wrong: «داير تقريباً 6 أسابيع»; right: «بتاخد تقريباً 6 أسابيع»).
 - Arabic script only, plus German/English terms in Latin script. No other scripts. No formal MSA phrasing.
 Return JSON with the rewritten "question" and "answer"."""
 

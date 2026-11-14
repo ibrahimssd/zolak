@@ -99,14 +99,16 @@ def gate(o: dict, name_re) -> str | None:
     return None
 
 
-def dedup(items: list[dict], threshold: float, device: str) -> list[dict]:
+def dedup(items: list[dict], threshold: float, device: str, prefer: frozenset = frozenset()) -> list[dict]:
+    """Merge near-duplicate questions; keep ids in `prefer` (pinned eval ids) first, then the most confident and
+    most recent version."""
     from sentence_transformers import SentenceTransformer
 
     model = SentenceTransformer("BAAI/bge-m3", device=device)
     emb = model.encode([it["question"] for it in items], normalize_embeddings=True, batch_size=64,
                        show_progress_bar=False)
-    order = sorted(range(len(items)),
-                   key=lambda i: (CONF_RANK[items[i]["confidence"]], items[i]["date"]), reverse=True)
+    order = sorted(range(len(items)), key=lambda i: (items[i]["id"] in prefer, CONF_RANK[items[i]["confidence"]],
+                                                     items[i]["date"]), reverse=True)
     kept_idx: list[int] = []
     for i in order:
         if kept_idx:
@@ -125,6 +127,9 @@ def main() -> None:
     ap.add_argument("--out-dir", default="data/processed")
     ap.add_argument("--dup-threshold", type=float, default=0.90)
     ap.add_argument("--n-eval", type=int, default=150)
+    ap.add_argument("--eval-ids", default="",
+                    help="JSON list of record ids to hold out instead of a fresh stratified split (keeps the eval set "
+                         "of an earlier build, so models trained on that build stay comparable)")
     ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
 
@@ -154,7 +159,8 @@ def main() -> None:
             "confidence": o["confidence"], "time_sensitive": o["time_sensitive"], "also_seen": [],
         })
     n_gated = len(items)
-    items = dedup(items, args.dup_threshold, args.device)
+    pinned = frozenset(json.load(open(args.eval_ids, encoding="utf-8"))) if args.eval_ids else frozenset()
+    items = dedup(items, args.dup_threshold, args.device, prefer=pinned)
 
     # stratified eval split (high confidence only)
     rnd = random.Random(0)
@@ -167,6 +173,12 @@ def main() -> None:
     for topic, pool in by_topic.items():
         k = max(1, round(args.n_eval * len(pool) / max(pool_total, 1)))
         eval_ids.update(it["id"] for it in rnd.sample(pool, min(k, len(pool))))
+    if args.eval_ids:
+        fixed = set(pinned)
+        present = {it["id"] for it in items}
+        print(f"fresh stratified split shares {len(eval_ids & fixed)}/{len(fixed)} ids with {args.eval_ids}; "
+              f"using the fixed ids: {len(fixed & present)}/{len(fixed)} survive gates + dedup")
+        eval_ids = fixed & present
 
     out = Path(args.out_dir)
     with (out / "kb.jsonl").open("w", encoding="utf-8") as fkb, \

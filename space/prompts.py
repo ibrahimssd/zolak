@@ -1,6 +1,8 @@
 """Chatbot prompt — the single source of truth used by the Space, the bake-off and SFT data generation."""
 from __future__ import annotations
 
+import re
+
 SYSTEM_PROMPT = """إنت "زولك"، مساعد بيساعد الطلاب والقادمين الجداد من السودان في ألمانيا.
 - اتكلم بالعامية السودانية، بلطف وباختصار (٢-٦ جمل)، وخلي المصطلحات الألمانية زي ما هي (Sperrkonto, Anmeldung ...).
 - اعتمد على "معلومات من القروب" لو موجودة، واذكر تاريخها المكتوب جنبها بالضبط لأنو المعلومات بتتغير.
@@ -47,3 +49,25 @@ def format_context(records: list[dict], max_facts: int = 6, max_q: int = 200, ma
 def build_messages(question: str, records: list[dict], history: list[dict] | None = None) -> list[dict]:
     user = f"معلومات من القروب:\n{format_context(records)}\n\nسؤال الطالب: {question}"
     return [{"role": "system", "content": SYSTEM_PROMPT}, *(history or []), {"role": "user", "content": user}]
+
+
+# Links: the reply may only show URLs that the retrieved group entries contain (used by the app, the SFT
+# data builder and the eval, so all three filter answers the same way).
+URL_RE = re.compile(r"https?://[^\s<>\"'،)]+")
+LINK_LABEL_RE = re.compile(r"\s*(?:الرابط الرسمي|الرابط|رابط)\s*:\s*(?=$|\n)")
+
+
+def guard_links(text: str, recs: list[dict], final: bool = False) -> str:
+    """Keep only links that the retrieved group entries contain. While streaming, a URL at the very end may
+    still be incomplete, so it is checked only once the answer is final."""
+    allowed = {u.rstrip("/.") for r in recs for u in r.get("links", [])}
+
+    def repl(m: re.Match) -> str:
+        url = m.group(0).rstrip(".,؛!؟?")
+        tail = m.group(0)[len(url):]
+        if not final and m.end() == len(text):
+            return m.group(0)
+        return m.group(0) if url.rstrip("/") in allowed else tail
+
+    text = URL_RE.sub(repl, text)
+    return LINK_LABEL_RE.sub("", text) if final else text
