@@ -145,6 +145,13 @@ main { max-width: 860px; margin: 0 auto; padding: 24px 16px 8px; }
 .msg .actions { display: flex; gap: 6px; margin-top: 6px; }
 .msg .actions button { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--muted); }
 .msg .actions button.chosen { border-color: var(--accent); color: var(--accent); }
+.msg .correct { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.msg .correct label { font-weight: 600; }
+.msg .correct textarea { flex: none; border-radius: 12px; padding: 8px 12px; font-size: .92rem; }
+.msg .correct .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.msg .correct .send-fix { background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 6px 14px; font-size: .85rem; }
+.msg .correct button:disabled, .msg .correct textarea:disabled { opacity: .6; }
+.msg .correct.done { color: var(--muted); font-size: .88rem; }
 .msg.error { border-color: #c0392b; }
 .cursor::after { content: "▍"; animation: blink 1s steps(1) infinite; color: var(--accent); }
 @keyframes blink { 50% { opacity: 0; } }

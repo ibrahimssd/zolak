@@ -12,6 +12,9 @@ API (used by the GitHub Pages site via @gradio/client):
   /ask       (question: str, history: list[{"role","content"}]) -> streamed answer text;
              the final chunk contains SOURCES_SEP followed by a short sources line
   /feedback  (question: str, answer: str, rating: "up"|"down") -> "ok"
+  /correction (question: str, answer: str, correction: str) -> "ok"   the student's answer to «أها الصح شنو؟» after 👎
+Feedback rows (FEEDBACK_REPO, data/feedback-*.jsonl):
+  {ts, rating, question, answer, entries: [ids of the 2 retrieved KB entries], model[, correction]}
 """
 from __future__ import annotations
 
@@ -213,15 +216,45 @@ def answer(question: str, history: list | None = None):
     yield text + SOURCES_SEP + _sources_line(recs, text)
 
 
-def feedback(question: str, answer_text: str, rating: str) -> str:
-    if rating not in ("up", "down"):
-        return "ignored"
-    row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "rating": rating,
-           "question": (question or "")[:1000], "answer": (answer_text or "")[:3000], "model": MODEL_FILE}
+MODEL_NAME = MODEL_SUBDIR if BACKEND in ("zerogpu", "remote") else MODEL_FILE
+
+
+def _log_feedback(row: dict) -> None:
+    """Append one row to this replica's feedback file; the CommitScheduler pushes it to the private dataset."""
     if scheduler:
         with scheduler.lock:
             with FEEDBACK_FILE.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def _feedback_row(question: str, answer_text: str, rating: str) -> dict:
+    question = re.sub(r"\s+", " ", (question or "")).strip()[:1000]
+    try:  # retrieval is deterministic: these are the 2 entries the answer was written from (for later training)
+        entries = [] if not question or SMALLTALK_RE.match(question) else \
+            [r["id"] for r in retriever.top_entries(question, k=TOP_K)]
+    except Exception as e:
+        print(f"feedback retrieval failed: {type(e).__name__}: {e}", flush=True)
+        entries = []
+    return {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "rating": rating, "question": question,
+            "answer": (answer_text or "")[:3000], "entries": entries, "model": MODEL_NAME}
+
+
+def feedback(question: str, answer_text: str, rating: str) -> str:
+    if rating not in ("up", "down"):
+        return "ignored"
+    _log_feedback(_feedback_row(question, answer_text, rating))
+    return "ok"
+
+
+def correction(question: str, answer_text: str, correction_text: str) -> str:
+    """After 👎 the page asks «أها الصح شنو؟»; the student's correction is kept with the question, the wrong
+    answer and the retrieved entries. It is raw user text: anonymize it before any training use."""
+    correction_text = (correction_text or "").strip()[:2000]
+    if not correction_text:
+        return "ignored"
+    row = _feedback_row(question, answer_text, "down")
+    row["correction"] = correction_text
+    _log_feedback(row)
     return "ok"
 
 
@@ -246,8 +279,10 @@ with gr.Blocks(title="Zolak", theme=gr.themes.Soft()) as demo:
     with gr.Row(visible=False):  # API-only endpoints for the GitHub Pages front-end
         q_in, h_in, a_out = gr.Textbox(), gr.JSON(), gr.Textbox()
         fq, fa, fr, f_out = gr.Textbox(), gr.Textbox(), gr.Textbox(), gr.Textbox()
+        cq, ca, cc, c_out = gr.Textbox(), gr.Textbox(), gr.Textbox(), gr.Textbox()
     q_in.submit(answer, [q_in, h_in], a_out, api_name="ask")
     fr.submit(feedback, [fq, fa, fr], f_out, api_name="feedback")
+    cc.submit(correction, [cq, ca, cc], c_out, api_name="correction")
 
 demo.queue(default_concurrency_limit=4 if BACKEND == "remote" else 1, max_size=40)
 

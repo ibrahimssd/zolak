@@ -79,11 +79,43 @@ function addFeedback(el, question, answer) {
     b.onclick = async () => {
       bar.querySelectorAll("button").forEach((x) => (x.disabled = true));
       b.classList.add("chosen");
+      if (rating === "down") askCorrection(el, question, answer);
       try { await client.predict("/feedback", [question, answer, rating]); } catch (e) { console.warn(e); }
     };
     bar.appendChild(b);
   }
   el.appendChild(bar);
+}
+// After 👎: ask the student for the right answer; corrections are kept privately to improve the model.
+function askCorrection(el, question, answer) {
+  const box = document.createElement("form");
+  box.className = "correct";
+  box.innerHTML = `<label>أها الصح شنو؟</label>
+    <textarea rows="2" maxlength="2000" aria-label="الإجابة الصحيحة" placeholder="اكتب الإجابة الصحيحة أو الحاجة الغلط في الرد… (ما تكتب أسماء أو أرقام تلفونات)"></textarea>
+    <div class="row"><button type="submit" class="send-fix">أرسل التصحيح</button><button type="button" class="ghost">تخطي</button></div>`;
+  const ta = box.querySelector("textarea"), sendBtn = box.querySelector(".send-fix");
+  box.querySelector(".ghost").onclick = () => box.remove();
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); box.requestSubmit(); }
+  });
+  box.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = ta.value.trim();
+    if (!text) { ta.focus(); return; }
+    ta.disabled = sendBtn.disabled = true;
+    try {
+      await client.predict("/correction", [question, answer, text]);
+      box.replaceWith(Object.assign(document.createElement("div"),
+        { className: "correct done", textContent: "شكراً يا زول 🙏 تصحيحك حيساعدنا نحسّن زولك." }));
+    } catch (err) {
+      console.warn(err);
+      ta.disabled = sendBtn.disabled = false;
+      sendBtn.textContent = "ما اترسل، جرب تاني";
+    }
+  });
+  el.appendChild(box);
+  ta.focus();
+  scrollChat();
 }
 
 // ---------- backend connection (free backends sleep when idle)
