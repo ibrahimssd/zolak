@@ -21,12 +21,12 @@ from retriever import HybridRetriever, doc_text  # noqa: E402
 EMBED_MODEL = "BAAI/bge-m3"
 
 
-def build(kb_path: Path, out_dir: Path, device: str):
+def build(kb_path: Path, out_dir: Path, device: str, embed_model: str = EMBED_MODEL, embed_repo: str = ""):
     import faiss
     from sentence_transformers import SentenceTransformer
 
     records = [json.loads(l) for l in kb_path.open(encoding="utf-8")]
-    model = SentenceTransformer(EMBED_MODEL, device=device)
+    model = SentenceTransformer(embed_model, device=device)
     emb = model.encode([doc_text(r) for r in records], normalize_embeddings=True, batch_size=32,
                        convert_to_numpy=True, show_progress_bar=True).astype("float32")
     index = faiss.IndexFlatIP(emb.shape[1])
@@ -39,8 +39,12 @@ def build(kb_path: Path, out_dir: Path, device: str):
     qindex.add(qemb)
     faiss.write_index(qindex, str(out_dir / "kb_q.faiss"))
     shutil.copy(kb_path, out_dir / "kb.jsonl")
-    (out_dir / "config.json").write_text(json.dumps({"embed_model": EMBED_MODEL, "dim": int(emb.shape[1]),
-                                                     "n_records": len(records)}, indent=1))
+    # a fine-tuned embedder lives in a private model repo: the Space loads <embed_repo>/<folder name>
+    cfg = {"embed_model": Path(embed_model).name if embed_repo else embed_model, "dim": int(emb.shape[1]),
+           "n_records": len(records)}
+    if embed_repo:
+        cfg["embed_repo"] = embed_repo
+    (out_dir / "config.json").write_text(json.dumps(cfg, indent=1))
     print(f"indexed {len(records)} records (dim {emb.shape[1]}) -> {out_dir}")
     return model
 
@@ -63,8 +67,10 @@ def main() -> None:
     ap.add_argument("--out", default="data/index")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--eval-paraphrases", default="")
+    ap.add_argument("--embed-model", default=EMBED_MODEL, help="Hub id or local folder of a fine-tuned embedder")
+    ap.add_argument("--embed-repo", default="", help="private model repo that holds the fine-tuned embedder folder")
     args = ap.parse_args()
-    model = build(Path(args.kb), Path(args.out), args.device)
+    model = build(Path(args.kb), Path(args.out), args.device, args.embed_model, args.embed_repo)
     if args.eval_paraphrases:
         evaluate(Path(args.out), Path(args.eval_paraphrases), model)
 

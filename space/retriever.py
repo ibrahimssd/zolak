@@ -13,6 +13,7 @@ Index directory layout (built by src/rag/build_index.py):
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,8 +75,20 @@ class HybridRetriever:
         self.summary_of = {m: r for r in self.records if r.get("source") == "summary" for m in r.get("members", [])}
         if embed_model is None:
             from sentence_transformers import SentenceTransformer
-            embed_model = SentenceTransformer(self.cfg["embed_model"], device=device)
+            embed_model = SentenceTransformer(self.embed_path(), device=device)
         self.embedder = embed_model
+
+    def embed_path(self) -> str:
+        """Hub id of the embedder, or a local copy of a fine-tuned one kept in a private model repo
+        (config "embed_repo"; LOCAL_EMBED overrides for offline runs)."""
+        name = self.cfg["embed_model"]
+        if not self.cfg.get("embed_repo"):
+            return name
+        if os.environ.get("LOCAL_EMBED"):
+            return os.environ["LOCAL_EMBED"]
+        from huggingface_hub import snapshot_download
+        root = snapshot_download(self.cfg["embed_repo"], allow_patterns=[f"{name}/*"], token=os.environ.get("HF_TOKEN"))
+        return str(Path(root) / name)
 
     def embed(self, texts: list[str]):
         return self.embedder.encode(texts, normalize_embeddings=True, convert_to_numpy=True).astype("float32")
