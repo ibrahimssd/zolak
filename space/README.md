@@ -12,11 +12,14 @@ license: apache-2.0
 short_description: Sudanese-dialect helper for Sudanese students in Germany
 ---
 
-# زولك — Zolak
+# زولك · Zolak
 
-Answers questions from Sudanese students and newcomers in Germany, in Sudanese dialect, grounded in the
-anonymized experience of the community group "طلاب السودان في ألمانيا".
+This Space is the backend of Zolak, a chatbot that answers questions from Sudanese students and newcomers in
+Germany in Sudanese Arabic, from the anonymized experience of the group «طلاب السودان في ألمانيا».
 
-- Model: ALLaM-7B-Instruct (Q4_K_M, llama.cpp) — will be replaced by a Sudanese-dialect fine-tune.
-- Retrieval: BAAI/bge-m3 + BM25 over a private, anonymized knowledge base.
-- These are community experiences, not legal advice. Always confirm with the official authorities.
+Use the chat page: https://ibrahimssd.github.io/zolak/
+
+- The Space searches a private, anonymized knowledge base (fine-tuned bge-m3 plus keyword search) and sends the two
+  best entries to a private GPU worker running Zolak-ALLaM-7B, which answers only from them.
+- Answers are community experience, not legal advice. Always confirm with the official authorities.
+- Code: https://github.com/ibrahimssd/zolak
