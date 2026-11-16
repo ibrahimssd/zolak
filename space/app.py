@@ -121,7 +121,15 @@ elif BACKEND == "remote":
     # GPU time count against the owner's PRO quota instead of each anonymous visitor's tiny quota.
     from gradio_client import Client
 
+    import threading
+
+    import httpx
+
     GPU_SPACE = os.environ.get("GPU_SPACE", "ibrahimssd11/zolak-gpu")
+    GPU_URL = "https://" + GPU_SPACE.replace("/", "-").replace(".", "-").lower() + ".hf.space"
+    # A call that hangs (e.g. the worker went to sleep and the cached client is stale) would hold one of the queue's
+    # slots forever and make every later visitor wait. Give up, reconnect and let answer() retry once.
+    FIRST_CHUNK_S, TOTAL_S = 120, 210
     _gpu = {"client": None}
 
     def _gpu_client():
@@ -129,12 +137,45 @@ elif BACKEND == "remote":
             _gpu["client"] = Client(GPU_SPACE, hf_token=TOKEN, verbose=False)
         return _gpu["client"]
 
+    def _keep_awake():
+        """Ping the worker every 15 min so it does not fall asleep (a cold start reloads the 14 GB model). The
+        request only reaches the web server; no GPU is attached, so it costs no ZeroGPU quota."""
+        while True:
+            try:
+                httpx.get(f"{GPU_URL}/config", headers={"Authorization": f"Bearer {TOKEN}"}, timeout=120)
+            except Exception as e:
+                print(f"keep-awake ping failed: {type(e).__name__}: {e}", flush=True)
+            time.sleep(15 * 60)
+
+    threading.Thread(target=_keep_awake, daemon=True).start()
+
     def generate(msgs: list[dict]):
-        prev = ""
-        for out in _gpu_client().submit(json.dumps(msgs, ensure_ascii=False), api_name="/generate"):
+        try:
+            job = _gpu_client().submit(json.dumps(msgs, ensure_ascii=False), api_name="/generate")
+            prev, t0 = "", time.time()
+            while True:
+                outs = job.outputs()
+                out = outs[-1] if outs else ""
+                if out and len(out) > len(prev):
+                    yield out[len(prev):]
+                    prev = out
+                if job.done():
+                    break
+                waited = time.time() - t0
+                if (not prev and waited > FIRST_CHUNK_S) or waited > TOTAL_S:
+                    job.cancel()
+                    raise TimeoutError(f"GPU worker sent {'no answer' if not prev else 'no end'} in {waited:.0f}s")
+                time.sleep(0.2)
+            outs = job.outputs()
+            out = outs[-1] if outs else ""
             if out and len(out) > len(prev):
                 yield out[len(prev):]
                 prev = out
+            if not prev and job.exception() is not None:
+                raise job.exception()
+        except Exception:
+            _gpu["client"] = None   # reconnect next time (a restarted worker has a new session)
+            raise
 else:
     from llama_cpp import Llama
 
