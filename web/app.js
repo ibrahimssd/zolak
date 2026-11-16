@@ -91,7 +91,7 @@ function askCorrection(el, question, answer) {
   const box = document.createElement("form");
   box.className = "correct";
   box.innerHTML = `<label>أها الصح شنو؟</label>
-    <textarea rows="2" maxlength="2000" aria-label="الإجابة الصحيحة" placeholder="شنو الغلط، والصح من تجربتك، ومتين (الشهر والسنة)… (ما تكتب أسماء أو أرقام تلفونات)"></textarea>
+    <textarea rows="2" maxlength="2000" aria-label="الإجابة الصحيحة" placeholder="اكتب التصحيح بالتفصيل: شنو الغلط، والصح من تجربتك، ومتين (الشهر والسنة)… (ما تكتب أسماء أو أرقام تلفونات)"></textarea>
     <div class="row"><button type="submit" class="send-fix">أرسل التصحيح</button><button type="button" class="ghost">تخطي</button></div>`;
   const ta = box.querySelector("textarea"), sendBtn = box.querySelector(".send-fix");
   box.querySelector(".ghost").onclick = () => box.remove();
