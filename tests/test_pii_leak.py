@@ -17,6 +17,7 @@ ARTIFACTS = [
     "data/processed/messages.jsonl", "data/processed/threads.jsonl", "data/processed/info_posts.jsonl",
     "data/processed/qa.jsonl", "data/processed/kb.jsonl", "data/processed/faq_bank.jsonl",
     "data/processed/kb_raw.jsonl", "data/index/kb.jsonl",
+    "data/processed/kb_guides.jsonl", "data/processed/kb_group_guides.jsonl",
 ]
 TEXT_FIELDS = ("text", "question", "answer", "question_sd", "answer_sd", "fact", "facts")
 

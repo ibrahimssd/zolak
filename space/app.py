@@ -61,7 +61,7 @@ from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 
 from dialect_fix import build_vocab, sudanize_text
 from prompts import build_messages, guard_links
-from retriever import HybridRetriever
+from retriever import HybridRetriever, retrieval_query
 
 TOKEN = os.environ.get("HF_TOKEN")
 # BACKEND: "zerogpu" = full-precision model with PyTorch on Hugging Face ZeroGPU (included in PRO, quota-based)
@@ -224,9 +224,10 @@ def _sources_line(recs: list[dict], answer_text: str = "") -> str:
         return "ℹ️ ما لقيت نقاش في القروب عن السؤال دا."
     parts = []
     for r in recs:
-        if r.get("source") == "summary":
+        if r.get("source") in ("summary", "guide"):
             a, b, n = r["date_from"][:7], r["date"][:7], r["n_discussions"]
-            parts.append(("ملخص نقاشين" if n == 2 else f"ملخص {n} نقاشات") + (f" ({b})" if a == b else f" ({a} → {b})"))
+            kind = "ملخص" if r["source"] == "summary" else "دليل من"
+            parts.append((f"{kind} نقاشين" if n == 2 else f"{kind} {n} نقاشات") + (f" ({b})" if a == b else f" ({a} → {b})"))
         else:
             parts.append(f"نقاش {r['date'][:7]}")
     return "📅 من القروب: " + "، ".join(parts) + " — المعلومات بتتغير، اتأكد من الجهات الرسمية."
@@ -242,7 +243,9 @@ def answer(question: str, history: list | None = None):
     if not question:
         yield "اكتب سؤالك 🙂"
         return
-    recs = [] if SMALLTALK_RE.match(question) else retriever.top_entries(question, k=TOP_K)
+    # a follow-up («بالنسبه للاهلي لازم؟») is searched together with the previous question
+    recs = [] if SMALLTALK_RE.match(question) else \
+        retriever.top_entries(retrieval_query(question, _clean_history(history)), k=TOP_K)
     print(f"retrieved: {[r['id'] for r in recs]}", flush=True)
     msgs = build_messages(question, recs, _clean_history(history))
     text = ""

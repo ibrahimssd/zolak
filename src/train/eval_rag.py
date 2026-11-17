@@ -54,8 +54,10 @@ JUDGE_SCHEMA = {
             "text": {"type": "string"}, "supported": {"type": "boolean"}}, "required": ["text", "supported"]}},
         "wrong_office": {"type": "boolean"},
         "correctness": {"type": "string", "enum": ["correct", "partial", "wrong", "n/a"]},
+        "entry_points": {"type": "array", "maxItems": 12, "items": {"type": "object", "properties": {
+            "text": {"type": "string"}, "included": {"type": "boolean"}}, "required": ["text", "included"]}},
     },
-    "required": ["refused", "claims", "wrong_office", "correctness"],
+    "required": ["refused", "claims", "wrong_office", "correctness", "entry_points"],
 }
 JUDGE_PROMPT = """You grade a reply of a chatbot for Sudanese students in Germany. The chatbot must answer ONLY from
 the WhatsApp-group entries it was given, and must say that the group has no discussion about the question when
@@ -72,6 +74,9 @@ the entries do not answer it.
 - "correctness": compare with the REFERENCE answer if one is given, else "n/a". "correct" = the reply gives the
   reference's main point without contradicting it; "partial" = some of it; "wrong" = contradicts it or misses it
   (a refusal is "wrong").
+- "entry_points": the points in the ENTRIES that answer the question (steps, documents, amounts, durations, dates,
+  places, conditions, where people disagreed), at most 12, each as a short phrase; "included" is true if the reply
+  states that point. Empty list if the entries do not answer the question.
 
 ENTRIES:
 {ctx}
@@ -99,7 +104,13 @@ def cmd_prep(args) -> None:
             tests.append({"set": f"eval_{p['style']}", "query": p["query"], "gold": p["id"]})
         elif p["id"] is None and p.get("split") == "eval":
             tests.append({"set": "unanswerable", "query": p["query"], "gold": None, "kind": p["style"]})
+    # broad questions whose answers should be detailed (topic cards, 👎 questions); reported apart from "all"
+    for t in load(PROC / "detail_tests.jsonl"):
+        tests.append({"set": "detail", "query": t["query"], "gold": None, "kind": t["source"]})
     retr = HybridRetriever(args.index, device=args.device)
+    if args.rerank:
+        from sentence_transformers import CrossEncoder
+        retr.set_reranker(CrossEncoder(args.rerank, max_length=512, device=args.device), args.rerank_top)
     OUT.mkdir(parents=True, exist_ok=True)
     with (OUT / "tests.jsonl").open("w", encoding="utf-8") as f:
         for i, t in enumerate(tests):
@@ -122,7 +133,7 @@ def cmd_gen(args) -> None:
     tests = load(OUT / "tests.jsonl")
     llm = LLM(model=args.model, tensor_parallel_size=1, max_model_len=4096, gpu_memory_utilization=0.85,
               dtype="bfloat16")
-    params = SamplingParams(temperature=0.0, max_tokens=300, repetition_penalty=1.1)
+    params = SamplingParams(temperature=0.0, max_tokens=args.max_tokens, repetition_penalty=1.1)
     outs = llm.chat([build_messages(t["query"], t["ctx"]) for t in tests], params, use_tqdm=True)
     from dialect_fix import build_vocab, sudanize_text   # the app's dialect normalizer (vocabulary of the index)
     vocab = build_vocab([" ".join([r["question"], r["answer"], *r.get("facts", [])])
@@ -161,6 +172,10 @@ def summarize(rows: list[dict]) -> dict:
         "raw_links_from_ctx_%": pct([u in ctx_links(r) for u, r in raw_urls]),
         "n_raw_links": len(raw_urls),
         "dialect_sd_per_answer": round(st.mean(d["sd"] for d in dial), 2) if dial else None,
+        # share of the entries' relevant points (steps, documents, amounts ...) the reply includes
+        "completeness_%": pct([sum(p["included"] for p in r.get("entry_points", [])) / len(r["entry_points"])
+                               for r in answered if r["context_answers"] and r.get("entry_points")]),
+        "mean_words": round(st.mean(len(r["answer"].split()) for r in rows), 1) if rows else None,
         "non_sudanese_answers_%": pct([d["other"] > 0 for d in dial]),
         "non_sudanese_raw_model_%": pct([d["other"] > 0 for d in raw_dial]),   # before the app's normalizer
     }
@@ -202,9 +217,9 @@ def cmd_judge(args) -> None:
             n_fail += 1
             continue
         rows[n].append({**tests[q], **answers[n][q], **v})
-    report = {n: {"all": summarize(rs), **{s: summarize([r for r in rs if r["set"] == s])
+    report = {n: {"all": summarize([r for r in rs if r["set"] != "detail"]), **{s: summarize([r for r in rs if r["set"] == s])
                                             for s in sorted({r["set"] for r in rs})}} for n, rs in rows.items()}
-    log = Path(os.environ.get("ZOLAK_STORAGE", ".")) / "logs" / "eval_rag.json"
+    log = Path(os.environ.get("ZOLAK_STORAGE", ".")) / "logs" / f"eval_rag_{OUT.name}.json"
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
     for n, rs in rows.items():
@@ -224,14 +239,20 @@ def main() -> None:
     p = sub.add_parser("prep")
     p.add_argument("--index", default="data/index")
     p.add_argument("--device", default="cpu")
+    p.add_argument("--rerank", default="", help="cross-encoder to re-rank the hybrid candidates (e.g. BAAI/bge-reranker-v2-m3)")
+    p.add_argument("--rerank-top", type=int, default=8)
     g = sub.add_parser("gen")
     g.add_argument("--name", required=True)
     g.add_argument("--model", required=True)
     g.add_argument("--index", default="data/index", help="its kb.jsonl gives the normalizer's vocabulary")
+    g.add_argument("--max-tokens", type=int, default=300, help="as the GPU worker's MAX_NEW_TOKENS")
     j = sub.add_parser("judge")
     j.add_argument("--names", nargs="+", required=True)
     j.add_argument("--tp", type=int, default=4)
+    for s in (p, g, j):
+        s.add_argument("--out", default=str(OUT), help="folder for tests, answers and judgements of this experiment")
     args = ap.parse_args()
+    globals()["OUT"] = Path(args.out)
     {"prep": cmd_prep, "gen": cmd_gen, "judge": cmd_judge}[args.cmd](args)
 
 

@@ -27,7 +27,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "space"))
-from prompts import SYSTEM_PROMPT, URL_RE, build_messages, guard_links  # noqa: E402
+from prompts import PROMPT_STYLE, SYSTEM_PROMPT, URL_RE, build_messages, guard_links  # noqa: E402
 
 REFUSAL = "ما لقيت نقاش في القروب عن السؤال دا."
 MONTH_COMMA = re.compile(r"(يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر)، ?(\d{4})")
@@ -59,7 +59,7 @@ come from the entries under «معلومات من القروب». The chatbot's 
    - Links: only URLs copied character by character from the «روابط:» line of a used entry, at most two.
    - Offices and authorities: name one only if the used entries name it. For visa, residence, money or legal
      topics you may end with «اتأكد من الجهة الرسمية» — never name an office the entries don't mention.
-   - 2-6 sentences of natural Sudanese colloquial Arabic (no Egyptian, Gulf or Levantine forms, no formal MSA);
+   - {length} of natural Sudanese colloquial Arabic (no Egyptian, Gulf or Levantine forms, no formal MSA);
      German terms in Latin script. Use dialect words only where the meaning fits: «داير» means want/need and
      never "takes (time)"; for durations say «بتاخد». Sudanese negation is «ما» + verb with NO «ش» suffix:
      «ما بيحتاجو» (not «ما يحتاجوش»), «ما في» (not «ما فيش»), «ما لقيتها» (not «ما لقيتهاش»). Also «دا/دي»
@@ -72,6 +72,11 @@ come from the entries under «معلومات من القروب». The chatbot's 
 
 THE CHATBOT'S INSTRUCTIONS:
 """ + SYSTEM_PROMPT
+# answer length follows the chatbot's prompt style (space/prompts.py, ZOLAK_PROMPT)
+RUBRIC = RUBRIC.replace("{length}", "2-6 sentences" if PROMPT_STYLE == "brief" else
+                        "A complete answer: every step, document, amount, duration and place the used entries give, "
+                        "steps or required documents as a list (each line starting with a dash and a space), no filler; usually "
+                        "3-12 lines,")
 
 CHECK_SCHEMA = {
     "type": "object",

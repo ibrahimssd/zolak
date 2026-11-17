@@ -1,10 +1,21 @@
 """Chatbot prompt — the single source of truth used by the Space, the bake-off and SFT data generation."""
 from __future__ import annotations
 
+import os
 import re
 
+_STYLE = {
+    # short answers (the style the current model was trained on)
+    "brief": "- اتكلم بالعامية السودانية، بلطف وباختصار (٢-٦ جمل)، وخلي المصطلحات الألمانية زي ما هي (Sperrkonto, Anmeldung ...).",
+    # complete answers: every step, document, amount and date the entries give
+    "detailed": "- اتكلم بالعامية السودانية، بلطف ووضوح، وخلي المصطلحات الألمانية زي ما هي (Sperrkonto, Anmeldung ...).\n"
+                "- جاوب بالتفصيل الكافي: اذكر كل الخطوات والأوراق والمبالغ والمدد والأماكن المكتوبة في المعلومات. لو في\n"
+                "  خطوات أو أوراق مطلوبة اكتبها في نقاط، كل سطر يبدأ بشرطة (-). ما تطوّل بكلام عام ما في المعلومات.",
+}
+PROMPT_STYLE = os.environ.get("ZOLAK_PROMPT", "brief")
+
 SYSTEM_PROMPT = """إنت "زولك"، مساعد بيساعد الطلاب والقادمين الجداد من السودان في ألمانيا.
-- اتكلم بالعامية السودانية، بلطف وباختصار (٢-٦ جمل)، وخلي المصطلحات الألمانية زي ما هي (Sperrkonto, Anmeldung ...).
+""" + _STYLE[PROMPT_STYLE] + """
 - اعتمد على "معلومات من القروب" لو موجودة، واذكر تاريخها المكتوب جنبها بالضبط لأنو المعلومات بتتغير.
   ما تذكر أي تاريخ أو سنة لو ما مكتوبة في المعلومات.
 - جاوب بس من "معلومات من القروب" المكتوبة تحت، وما تجاوب من معرفتك العامة أبداً. لو في أكتر من معلومة، لخّص
@@ -23,20 +34,24 @@ def _cut(text: str, n: int) -> str:
 
 
 def _when(r: dict) -> str:
-    if r.get("source") == "summary":
+    if r.get("source") in ("summary", "guide"):
         a, b, n = r["date_from"][:7], r["date"][:7], r["n_discussions"]
         span = b if a == b else f"{a} → {b}"
-        return f"{span}، ملخص {'نقاشين' if n == 2 else f'{n} نقاشات'}"
+        kind = "ملخص" if r["source"] == "summary" else "دليل من"
+        return f"{span}، {kind} {'نقاشين' if n == 2 else f'{n} نقاشات'}"
     return r["date"][:7]
 
 
-def format_context(records: list[dict], max_facts: int = 6, max_q: int = 200, max_a: int = 1000) -> str:
-    """Dated context block. Entries are shown (almost) whole: the model may only say what it can see here."""
+def format_context(records: list[dict], max_facts: int = 6, max_q: int = 200, max_a: int = 1000,
+                   max_guide: int = 1800) -> str:
+    """Dated context block. Entries are shown (almost) whole: the model may only say what it can see here.
+    Topic guides (source="guide") combine many discussions and may be longer."""
     if not records:
         return NO_CONTEXT_NOTE
     parts = []
     for i, r in enumerate(records, 1):
-        lines = [f"[{i}] ({_when(r)}) س: {_cut(r['question'], max_q)}", f"ج: {_cut(r['answer'], max_a)}"]
+        limit = max_guide if r.get("source") == "guide" else max_a
+        lines = [f"[{i}] ({_when(r)}) س: {_cut(r['question'], max_q)}", f"ج: {_cut(r['answer'], limit)}"]
         facts = r.get("facts", [])[:max_facts]
         if facts:
             lines.append("حقائق: " + " | ".join(facts))

@@ -124,13 +124,12 @@ class HybridRetriever:
         return [Hit(self.records[i], fused[i], dense.index(i) if i in dense else None,
                     sparse.index(i) if i in sparse else None, sim[i]) for i in top]
 
-    def top_entries(self, query: str, k: int = 2, exclude_ids: set | frozenset = frozenset()) -> list[dict]:
-        """The k entries the chatbot answers from, with no similarity cut-off. A hit that belongs to a
-        summarized cluster is replaced by that cluster's summary, and duplicates collapse, so the k entries
-        cover different discussions. `exclude_ids` hides records (and summaries) from the ranking, e.g. the
-        held-out eval records while building training data."""
+    def candidates(self, query: str, n: int, exclude_ids: set | frozenset = frozenset()) -> list[dict]:
+        """Up to n distinct entries in hybrid-ranking order. A hit that belongs to a summarized cluster is replaced
+        by that cluster's summary, and duplicates collapse, so the entries cover different discussions.
+        `exclude_ids` hides records (and summaries), e.g. the held-out eval records while building training data."""
         out, seen = [], set()
-        for h in self.search(query, k=4 * k + len(exclude_ids)):
+        for h in self.search(query, k=4 * n + len(exclude_ids)):
             if h.rec["id"] in exclude_ids:
                 continue
             rec = self.summary_of.get(h.rec["id"], h.rec)
@@ -139,6 +138,39 @@ class HybridRetriever:
             if rec["id"] not in seen:
                 seen.add(rec["id"])
                 out.append(rec)
-                if len(out) == k:
+                if len(out) == n:
                     break
         return out
+
+    def top_entries(self, query: str, k: int = 2, exclude_ids: set | frozenset = frozenset()) -> list[dict]:
+        """The k entries the chatbot answers from, with no similarity cut-off. With a re-ranker (set_reranker),
+        the hybrid top `rerank_top` candidates are re-ordered by a cross-encoder before taking k."""
+        if self.reranker is None:
+            return self.candidates(query, k, exclude_ids)
+        cands = self.candidates(query, max(k, self.rerank_top), exclude_ids)
+        if len(cands) <= k:
+            return cands
+        scores = self.reranker.predict([(query, doc_text(r)) for r in cands], show_progress_bar=False)
+        order = sorted(range(len(cands)), key=lambda i: -float(scores[i]))
+        return [cands[i] for i in order[:k]]
+
+    reranker = None
+    rerank_top = 8
+
+    def set_reranker(self, model, top: int = 8) -> None:
+        """model: a sentence_transformers CrossEncoder (or anything with .predict(pairs)), or None to switch off."""
+        self.reranker, self.rerank_top = model, top
+
+
+# Follow-up questions («بالنسبه للاهلي لازم؟») mean little on their own: search with the previous question too.
+FOLLOWUP_RE = re.compile(r"^\W*(?:طيب|طب|بالنسب[ةه]|وكمان|وبرضو|ولو|يعني|ولا|وكيف|وشنو|وكم|وهل|ووين|ومتين|وياتو)"
+                         r"(?!\w)")
+
+
+def retrieval_query(question: str, history: list[dict] | None, max_words: int = 6) -> str:
+    """The text to search with: the question itself, or the previous user question + the question when the question
+    is a follow-up (starts with a follow-up word, or has at most `max_words` words) and there is a previous one."""
+    prev = next((m["content"] for m in reversed(history or []) if m.get("role") == "user" and m.get("content")), "")
+    if prev and (FOLLOWUP_RE.match(question) or len(question.split()) <= max_words):
+        return f"{prev} {question}"
+    return question
