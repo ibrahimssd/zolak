@@ -167,6 +167,26 @@ FOLLOWUP_RE = re.compile(r"^\W*(?:طيب|طب|بالنسب[ةه]|وكمان|وب
                          r"(?!\w)")
 
 
+# The refusal may offer a related topic: «ما لقيت نقاش ... في نقاش عن شروط الجنسية والرسوم لو بيفيدك.»
+SUGGEST_RE = re.compile(r"في (?:نقاش|نقاشات|كلام|تجارب)(?: في القروب)? عن (.{3,160}?)[،,]?\s*"
+                        r"(?:لو (?:بيفيدك|بتفيدك|بفيدك|يفيدك|تفيدك|داير|دايره|عايز|حابب)|[.؟?!\n]|$)")
+# A short «yes / go on» reply to that offer: «ايوه», «تمام جيبها», «واصل», «كلمني عنه», «yes»
+YES_RE = re.compile(r"^\W*(?:ايوه|أيوه|ايوا|أيوا|ايو|أيو|اي|إي|ايي|نعم|اكيد|أكيد|تمام|طيب|ماشي|اوكي|أوكي|اوك|حلو|"
+                    r"يلا|واصل|كمل|كمّل|جيب|جيبها|جيبو|جيبه|هات|هاتها|هاتو|قول|قولها|اتكلم|كلمني|احكي|احكيلي|"
+                    r"وريني|ورّيني|داير|دايره|عايز|بيفيدني|بفيدني|يفيدني|ok|okay|yes|yeah|sure)(?!\w)", re.I)
+
+
+def accepted_suggestion(question: str, history: list[dict] | None, max_words: int = 6) -> str | None:
+    """The topic the last answer offered («في نقاش عن X لو بيفيدك») when the question is a short yes/go-on reply
+    to it, else None. The caller then searches for X and asks the model «كلمني عن X»: on its own, «تمام جيبها»
+    looks unanswered to the model, which refused again."""
+    last = next((m for m in reversed(history or []) if m.get("role") in ("user", "assistant")), None)
+    if not last or last["role"] != "assistant" or len(question.split()) > max_words or not YES_RE.match(question):
+        return None
+    m = SUGGEST_RE.search(last.get("content") or "")
+    return m.group(1).strip() if m else None
+
+
 def retrieval_query(question: str, history: list[dict] | None, max_words: int = 6) -> str:
     """The text to search with: the question itself, or the previous user question + the question when the question
     is a follow-up (starts with a follow-up word, or has at most `max_words` words) and there is a previous one."""

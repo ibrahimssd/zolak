@@ -131,6 +131,24 @@ async function connect() {
   } finally { clearTimeout(slow); setStatus(""); }
 }
 
+// ---------- memory: the backend only sees the last MEMORY_MSGS messages (2 questions + 2 answers)
+const MEMORY_MSGS = 4;
+// the student refers back to something said earlier («قبل شوية», «السؤال الأول», «زي ما قلت ليك» ...)
+const BACK_REF = /(قبل شوي[ةه]|قبل كد[اه]|السؤال الأول|أول سؤال|اول سؤال|زي ما قلت|زي ما قلتو|القلت[وه]? لي|قلت لي|قلتلي|اتكلمنا|اتكلمت عن|سألتك|سالتك|الموضوع الفات|الموضوع القبل|الكلام الفات|نرجع ل)/;
+let memoryNoted = false;
+function memoryNote(botEl, question) {
+  if (history.length <= MEMORY_MSGS) return;               // nothing forgotten yet
+  const backRef = BACK_REF.test(question);
+  if (memoryNoted && !backRef) return;                     // say it once, and again when the student refers back
+  memoryNoted = true;
+  const n = document.createElement("div");
+  n.className = "correct done memory";
+  n.textContent = backRef
+    ? "🧠 زولك بيتذكر آخر سؤالين بس. لو قصدك حاجة اتكلمنا عنها قبل كدا، اكتب الموضوع تاني في سؤالك."
+    : "🧠 للعلم: زولك بيتذكر آخر سؤالين بس. لو رجعت لموضوع قديم، اكتبو تاني في سؤالك.";
+  botEl.appendChild(n);
+}
+
 // ---------- ask
 async function ask(question) {
   question = (question || "").trim();
@@ -152,7 +170,7 @@ async function ask(question) {
   }, 12000);
   try {
     const c = await connect();
-    const job = c.submit("/ask", [question, history.slice(-4)]);
+    const job = c.submit("/ask", [question, history.slice(-MEMORY_MSGS)]);
     // The job's message stream stays open after the last answer, so stop on "complete" (or on the final chunk,
     // which carries the sources line) instead of waiting for the stream to end.
     for await (const msg of job) {
@@ -177,6 +195,7 @@ async function ask(question) {
     const answer = full.split(SOURCES_SEP)[0];
     history.push({ role: "user", content: question }, { role: "assistant", content: answer });
     addFeedback(botEl, question, answer);
+    memoryNote(botEl, question);
   } catch (err) {
     if (String(err?.message) !== "not-deployed") console.error(err);
     botEl.classList.remove("cursor");
@@ -206,7 +225,7 @@ q.addEventListener("keydown", (e) => {
 function autosize() { q.style.height = "auto"; q.style.height = Math.min(q.scrollHeight, 160) + "px"; }
 q.addEventListener("input", autosize);
 $("new-chat").onclick = () => {
-  history = [];
+  history = []; memoryNoted = false;
   chat.querySelectorAll(".msg:not(.intro)").forEach((m) => m.remove());
 };
 

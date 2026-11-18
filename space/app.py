@@ -61,7 +61,7 @@ from huggingface_hub import CommitScheduler, hf_hub_download, snapshot_download
 
 from dialect_fix import build_vocab, sudanize_text
 from prompts import build_messages, guard_links
-from retriever import HybridRetriever, retrieval_query
+from retriever import HybridRetriever, accepted_suggestion, retrieval_query
 
 TOKEN = os.environ.get("HF_TOKEN")
 # BACKEND: "zerogpu" = full-precision model with PyTorch on Hugging Face ZeroGPU (included in PRO, quota-based)
@@ -266,11 +266,19 @@ def answer(question: str, history: list | None = None):
     if not question:
         yield "اكتب سؤالك 🙂"
         return
-    # a follow-up («بالنسبه للاهلي لازم؟») is searched together with the previous question
-    recs = [] if SMALLTALK_RE.match(question) else \
-        retriever.top_entries(retrieval_query(question, _clean_history(history)), k=TOP_K)
-    print(f"retrieved: {[r['id'] for r in recs]}", flush=True)
-    msgs = build_messages(question, recs, _clean_history(history))
+    hist = _clean_history(history)
+    # «ايوه» to the topic the last answer offered: search for that topic (with the question that led to the offer,
+    # which finds the entries the offer came from more often) and ask the model about it
+    topic = accepted_suggestion(question, hist)
+    asked = f"كلمني عن {topic}" if topic else question
+    if topic:
+        prev = next((m["content"] for m in reversed(hist) if m["role"] == "user"), "")
+        recs = retriever.top_entries(f"{prev} {topic}".strip(), k=TOP_K)
+    else:  # a follow-up («بالنسبه للاهلي لازم؟») is searched together with the previous question
+        recs = [] if SMALLTALK_RE.match(question) else \
+            retriever.top_entries(retrieval_query(question, hist), k=TOP_K)
+    print(f"retrieved: {[r['id'] for r in recs]}{' (suggested topic)' if topic else ''}", flush=True)
+    msgs = build_messages(asked, recs, hist)
     text = ""
     for attempt in (1, 2):
         try:
