@@ -137,10 +137,31 @@ elif BACKEND == "remote":
             _gpu["client"] = Client(GPU_SPACE, hf_token=TOKEN, verbose=False)
         return _gpu["client"]
 
+    _wake = {"last": 0.0}
+
+    def wake_worker(force: bool = False) -> str:
+        """Restart the worker if Hugging Face put it to sleep (the pings below do not always prevent that; a
+        sleeping private Space answers "Could not fetch config" instead of waking up). Restarting costs no GPU
+        quota. At most once every 5 minutes. Returns the stage seen."""
+        from huggingface_hub import HfApi
+        try:
+            api = HfApi(token=TOKEN)
+            stage = api.get_space_runtime(GPU_SPACE).stage
+            if stage in ("SLEEPING", "PAUSED", "STOPPED", "RUNTIME_ERROR") and \
+                    (force or time.time() - _wake["last"] > 5 * 60):
+                _wake["last"] = time.time()
+                api.restart_space(GPU_SPACE)
+                print(f"GPU worker was {stage}: restart requested", flush=True)
+            return stage
+        except Exception as e:
+            print(f"wake check failed: {type(e).__name__}: {e}", flush=True)
+            return "UNKNOWN"
+
     def _keep_awake():
-        """Ping the worker every 15 min so it does not fall asleep (a cold start reloads the 14 GB model). The
-        request only reaches the web server; no GPU is attached, so it costs no ZeroGPU quota."""
+        """Every 15 min: wake the worker if it sleeps, and ping it so it stays awake (a cold start reloads the 14 GB
+        model). The ping only reaches the web server; no GPU is attached, so it costs no ZeroGPU quota."""
         while True:
+            wake_worker()
             try:
                 httpx.get(f"{GPU_URL}/config", headers={"Authorization": f"Bearer {TOKEN}"}, timeout=120)
             except Exception as e:
@@ -193,7 +214,9 @@ else:
                 yield delta
 
 print(f"loaded {BACKEND} model + {len(retriever.records)} KB records in {time.time() - t0:.0f}s (threads={N_THREADS})")
+# Shown only when the error really says the ZeroGPU quota is used up; every other failure gets WAKING.
 BUSY = "⏳ زولك عليه ضغط شديد هسي (حصة الـ GPU اليومية خلصت). جرب تاني بعد شوية."
+WAKING = "⏳ زولك كان نايم وبيصحى هسي 😴 جرب تاني بعد دقيقة."
 
 scheduler = None
 FEEDBACK_DIR = Path("feedback")
@@ -257,12 +280,15 @@ def answer(question: str, history: list | None = None):
             break
         except Exception as e:  # ZeroGPU: quota used up or no GPU free right now (never billed)
             print(f"generation error (attempt {attempt}): {type(e).__name__}: {e}", flush=True)
-            transient = "quota" not in str(e).lower() and not text
-            if attempt == 1 and transient:
+            quota = "quota" in str(e).lower()
+            if attempt == 1 and not quota and not text:
                 time.sleep(2)
                 continue
+            if not quota and BACKEND == "remote":
+                wake_worker()
             # every final message ends with SOURCES_SEP so the web page knows the answer is complete
-            yield (_clean(text, recs, final=True) + "\n\n" if text else "") + BUSY + SOURCES_SEP + "⏳"
+            msg = BUSY if quota else WAKING
+            yield (_clean(text, recs, final=True) + "\n\n" if text else "") + msg + SOURCES_SEP + "⏳"
             return
     text = _clean(text.strip(), recs, final=True)
     yield text + SOURCES_SEP + _sources_line(recs, text)
